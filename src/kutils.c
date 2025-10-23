@@ -242,8 +242,6 @@ void adjust_angle( double* ang )
  */
 double vec_angle( double x, double y )
 {
-  double a;
-
   if( x > 0 ){
     if( y > 0 ){
       return atan( y/x );
@@ -255,8 +253,10 @@ double vec_angle( double x, double y )
   }else{
     if( y > 0 )
       return PIH;
-    else
+    else if( y < 0 )
       return 3*PIH;
+    else
+      return 0.0; /* x == 0 && y == 0 case */
   }
 }
 
@@ -265,7 +265,7 @@ double vec_angle( double x, double y )
  */
 void show_version( char* prgname )
 {
-  printf( prgname );
+  printf( "%s", prgname );
 #ifdef PACKAGE_STRING
   printf("( %s )\n",PACKAGE_STRING);
 #else

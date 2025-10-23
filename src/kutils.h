@@ -12,7 +12,19 @@ extern "C"{
 
 /* Common definitions */
 #ifndef PI
-#define PI 3.14159265358979323846
+#ifdef M_PI
+#define PI M_PI
+#else
+#define PI 3.14159265358979323846 /* copied from math.h */
+#endif
+#endif
+
+#ifndef PI2
+#define PI2 (PI*2)
+#endif
+
+#ifndef PIH
+#define PIH (PI*0.5)
 #endif
 
 #ifndef TRUE
@@ -33,17 +45,6 @@ enum{ CENTER,RIGHT,LEFT };
 #define MIN(a,b) ((a)>(b))?(b):(a)
 #define MAX(a,b) ((a)>(b))?(a):(b)
 #endif
-
-#ifndef PI
-#ifdef M_PI
-#define PI M_PI
-#else
-#define PI 3.14159265358979323846 /* copied from math.h */
-#endif
-#define PI2 (PI*2)
-#endif
-
-#define PIH (PI*0.5)
 
 #ifndef TRUE
 #define TRUE 1

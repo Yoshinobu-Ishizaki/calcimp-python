@@ -1,6 +1,6 @@
 /*
  * $Id: zmensur.h 6 2013-09-13 13:16:15Z yoshinobu $
- * ³ÈÄ¥¥á¥ó¥º¡¼¥ë¤ò°·¤¦¤¿¤á¤Î´Ø¿ô·²
+ * ï¿½ï¿½Ä¥ï¿½ï¿½ó¥º¡ï¿½ï¿½ï¿½ò°·¤ï¿½ï¿½ï¿½ï¿½ï¿½Î´Ø¿ï¿½ï¿½ï¿½
  */
 
 #ifndef _ZMENSUR_
@@ -59,17 +59,17 @@ enum { WALL = 1 };
 extern int rad_calc,dump_calc,sec_var_calc;
 
 /* 
- * ´ÉÊÉËà»¤¤Î·¸¿ô
- * Fletcher & Rossing ¤Ë¤è¤ëÆüËÜ¸ìÈÇ¡Ö³Ú´ï¤ÎÊªÍý³Ø¡×¤Î191p¡£
- * Ã¢¤·¡¢¶µ²Ê½ñ¤¬È¾·Â¤ò»È¤Ã¤¿¼°¤Ç¤¢¤ë¤Î¤ËÂÐ¤·¡¢¤³¤Á¤é¤ÏÄ¾·Â¤ò»È¤¦¤Î¤Ç
- * ¤½¤ì¤Ë·¸¿ôÃÍ¤ò¹ç¤ï¤»¤Æ¤¢¤ë¡£
+ * ï¿½ï¿½ï¿½ï¿½ï¿½à»¤ï¿½Î·ï¿½ï¿½ï¿½
+ * Fletcher & Rossing ï¿½Ë¤ï¿½ï¿½ï¿½ï¿½ï¿½Ü¸ï¿½ï¿½Ç¡Ö³Ú´ï¿½ï¿½Êªï¿½ï¿½ï¿½Ø¡×¤ï¿½191pï¿½ï¿½
+ * Ã¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ï¿½È¾ï¿½Â¤ï¿½È¤Ã¤ï¿½ï¿½ï¿½ï¿½Ç¤ï¿½ï¿½ï¿½Î¤ï¿½ï¿½Ð¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¾ï¿½Â¤ï¿½È¤ï¿½ï¿½Î¤ï¿½
+ * ï¿½ï¿½ï¿½ï¿½Ë·ï¿½ï¿½ï¿½ï¿½Í¤ï¿½ï¿½ï¤»ï¿½Æ¤ï¿½ï¿½ë¡£
  */
 #define VRATIO 3.3e-3 /* Fletcher & Rossing */
-/* #define VRATIO 2.3e-3  ARSIS¤Ë¹ç¤ï¤»¤ë??? */
+/* #define VRATIO 2.3e-3  ARSISï¿½Ë¹ï¿½ï¤»ï¿½ï¿½??? */
 #define ARATIO 6.0e-5
 
-#define GMM 1.4 /* ÈæÇ®Èæ */
-#define Pr 0.72 /* Prandtl¿ô */
+#define GMM 1.4 /* ï¿½ï¿½Ç®ï¿½ï¿½ */
+#define Pr 0.72 /* Prandtlï¿½ï¿½ */
 
 /* ------------------------------ prototype ------------------------------ */
 /* zmensur.c */
@@ -104,7 +104,7 @@ void set_var(char *s);
 void read_variables(char *inbuf);
 void read_child_mensur(char *buf);
 mensur *rejoint_men(mensur *men);
-mensur *read_mensur(char *path);
+mensur *read_mensur(const char *path);
 unsigned int count_men(mensur *men);
 void transmission_matrix(mensur *men, mensur *end, _Complex double *m11, _Complex double *m12, _Complex double *m21, _Complex double *m22);
 void sec_var_ratio1(mensur *men, double *out_t1, double *out_t2);

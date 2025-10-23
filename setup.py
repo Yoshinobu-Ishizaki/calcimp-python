@@ -29,6 +29,8 @@ def get_sources():
         'src/calcimp.c',
         'src/kutils.c',
         'src/zmensur.c',
+        'src/j1.c',
+        'src/struve.c',
     ]
     return sources
 

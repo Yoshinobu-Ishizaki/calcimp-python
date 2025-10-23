@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <cephes.h>
+#include "cephes.h"
 
 #include <sys/stat.h>
 #include <ctype.h>
@@ -899,7 +899,7 @@ mensur* rejoint_men( mensur* men )
  * 変数定義や部分メンズール定義を処理した後、分岐や合流部分を処理して
  * 全体を適切に繋ぐ。
  */
-mensur* read_mensur( char *path )
+mensur* read_mensur( const char *path )
 {
   int err;
   FILE* infile;

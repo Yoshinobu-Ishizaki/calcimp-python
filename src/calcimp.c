@@ -169,7 +169,7 @@ static PyObject* calculate_impedance(const char* filename, double max_freq, doub
     mensur *mensur;
     double complex *imp;
     int n_imp;
-    double frq, mag, re, im, S;
+    double frq, mag, S;
     int i;
     PyObject *freq_array, *real_array, *imag_array, *mag_array, *result_tuple;
     npy_intp dims[1];
@@ -315,7 +315,7 @@ int main( int argc, char **argv )
   int i,n_imp;
   char *in_name,*s;
   FILE *fout;
-  mensur *mensur,*m;
+  mensur *mensur;
   double complex *imp,*p,mu;
   double frq,mag,re,im,S;
 
