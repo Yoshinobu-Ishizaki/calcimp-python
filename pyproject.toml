@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=42", "numpy"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "calcimp-python"
 version = "0.1.0"
-description = "Add your description here"
+description = "Calculate input impedance of tubes"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = ["numpy"]
