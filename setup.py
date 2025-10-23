@@ -31,6 +31,17 @@ def get_sources():
         'src/zmensur.c',
         'src/j1.c',
         'src/struve.c',
+        'src/const.c',
+        'src/xydata.c',
+        'src/matutil.c',
+        'src/jv.c',
+        'src/yn.c',
+        'src/gamma.c',
+        'src/airy.c',
+        'src/j0.c',
+        'src/polevl.c',
+        'src/isnan.c',
+        'src/mtherr.c',
     ]
     return sources
 
