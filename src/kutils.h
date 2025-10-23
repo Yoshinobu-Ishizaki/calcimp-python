@@ -10,7 +10,18 @@ extern "C"{
 #include "matutil.h"
 #include <math.h>
 
-#include "config.h"
+/* Common definitions */
+#ifndef PI
+#define PI 3.14159265358979323846
+#endif
+
+#ifndef TRUE
+#define TRUE 1
+#endif
+
+#ifndef FALSE
+#define FALSE 0
+#endif
 
 extern int verbose_mode;
 
@@ -47,9 +58,9 @@ enum{ CENTER,RIGHT,LEFT };
 #define MAX_LINE_BUF 1024
 #define BUFSIZE 256
 
-/* ÊÉÌÌ¸ú²Ì¤Ë¤è¤ë²»Â®¸º¾¯¤ÎÄê¿ôÃÍ¤Î¼Â¸³ÃÍ */
+/* ï¿½ï¿½ï¿½Ì¸ï¿½ï¿½Ì¤Ë¤ï¿½ë²»Â®ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¤Î¼Â¸ï¿½ï¿½ï¿½ */
 #define KIRCHHOFF_CONST 0.004253682 
-/* ÊÉÌÌ¸ú²Ì¤Ë¤è¤ë²»Â®¸º¾¯¤ÎÄê¿ôÃÍ¤ÎÍýÏÀÃÍ */
+/* ï¿½ï¿½ï¿½Ì¸ï¿½ï¿½Ì¤Ë¤ï¿½ë²»Â®ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
 /*#define KIRCHHOFF_CONST 0.00402961*/
 
 

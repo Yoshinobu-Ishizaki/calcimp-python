@@ -13,15 +13,15 @@
 #include <string.h>
 /* #include <math.h> */
 #include <getopt.h>
+#include <glib.h>
+#include <gsl/gsl_math.h>
+#include <gsl/gsl_complex.h>
+#include <gsl/gsl_complex_math.h>
 #include "kutils.h"
 #include "zmensur.h"
 #include "calcimp.h"
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-/* grobals */
+/* globals */
 extern int optind;
 extern int optopt;
 extern char* optarg;

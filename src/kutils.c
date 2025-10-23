@@ -8,14 +8,12 @@
 #include <math.h>
 #include "kutils.h"
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #ifndef __USE_ISOC99
 #define __USE_ISOC99
 #endif
 #include <ctype.h>
+
+#define PACKAGE_STRING "calcimp 0.1"
 
 /* #define CM_CHAR '%' */ /* comment line beginning flag */
 
