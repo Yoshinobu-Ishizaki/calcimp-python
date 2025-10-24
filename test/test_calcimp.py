@@ -177,7 +177,7 @@ if __name__ == "__main__":
         print("Test completed successfully!")
 
         # Write results to file
-        output_file = "sample/test_pycalcimp.imp"
+        output_file = "test/test_pycalcimp.imp"
         write_impedance_file(output_file, frequencies, real_part, imag_part, magnitude_db)
 
         # Compare with reference file

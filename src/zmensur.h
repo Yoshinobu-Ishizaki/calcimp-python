@@ -16,6 +16,7 @@
 #include <glib.h>
 
 #include "xydata.h"
+#include "acoustic_constants.h"
 
 struct men_s {
   double df,db,r;
@@ -53,10 +54,6 @@ struct varlist {
 };
 
 enum { TONEHOLE = 1, ADDON,SPLIT,JOIN };
-enum { NONE = 0, PIPE, BUFFLE };
-enum { WALL = 1 };
-
-extern int rad_calc,dump_calc,sec_var_calc;
 
 /* 
  * �����໤�η���
@@ -93,7 +90,7 @@ void print_men_xy(mensur *inmen, char *comment, int show_stair);
 GPtrArray *get_men_xy(mensur* men, int show_stair );
 void print_pressure(mensur *men, int show_stair);
 GArray *get_pressure(mensur* men, int show_stair );
-GArray *get_pressure_dist(double frq, mensur* men, int show_stair );
+GArray *get_pressure_dist(double frq, mensur* men, int show_stair, acoustic_constants *ac);
 void resolve_child(mensur *men);
 mensur *build_men(char *inbuf);
 mensur *find_men(char *s);
@@ -106,13 +103,13 @@ void read_child_mensur(char *buf);
 mensur *rejoint_men(mensur *men);
 mensur *read_mensur(const char *path);
 unsigned int count_men(mensur *men);
-void transmission_matrix(mensur *men, mensur *end, _Complex double *m11, _Complex double *m12, _Complex double *m21, _Complex double *m22);
+void transmission_matrix(mensur *men, mensur *end, _Complex double *m11, _Complex double *m12, _Complex double *m21, _Complex double *m22, acoustic_constants *ac);
 void sec_var_ratio1(mensur *men, double *out_t1, double *out_t2);
 void sec_var_ratio(mensur *men, double *out_t1, double *out_t2);
-void do_calc_imp(double frq, mensur *men);
+void do_calc_imp(double frq, mensur *men, acoustic_constants *ac);
 void get_imp(mensur *men, double _Complex *out_z);
-void rad_imp(double frq, double d, double _Complex *zr);
-void input_impedance(double frq, mensur *men, double e_ratio, double _Complex *out_z);
+void rad_imp(double frq, double d, double _Complex *zr, acoustic_constants *ac);
+void input_impedance(double frq, mensur *men, double e_ratio, double _Complex *out_z, acoustic_constants *ac);
 mensur *trunc_men(mensur *inmen);
 void horn_function(mensur *inmen);
 

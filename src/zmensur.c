@@ -20,15 +20,6 @@ char filecomment[256];
 struct varlist* variable_list = NULL;
 struct menlist* mensur_list = NULL;
 
-double c0; /* speed of sound */
-double rho; /* density of air */
-double rhoc0; /* rho x c0 */
-double nu; /* 空気の動粘性係数 */
-
-int rad_calc = PIPE;
-int dump_calc = WALL;
-int sec_var_calc = FALSE;
-
 /* ------------------------------ subroutines ------------------------------*/
 mensur* create_men (double df,double db,double r,char* comm)
 {
@@ -518,14 +509,14 @@ void print_pressure(mensur* men, int show_stair )
 /*
  * 音圧分布を返す
  */
-GArray *get_pressure_dist( double f, mensur* men, int show_stair )
+GArray *get_pressure_dist( double f, mensur* men, int show_stair, acoustic_constants *ac )
 {
   double complex p,det,z;
   double mag;
   GArray* ar;
-  
+
   /* calc imput impedance first */
-  input_impedance(f,men,1,&z);
+  input_impedance(f,men,1,&z,ac);
 
   ar = g_array_new( FALSE, FALSE, sizeof(double) );
 
@@ -966,7 +957,8 @@ unsigned int count_men( mensur* men )
  */
 void transmission_matrix( mensur *men, mensur* end,
 			  complex double* m11,complex double* m12,
-			  complex double* m21, complex double* m22 )
+			  complex double* m21, complex double* m22,
+			  acoustic_constants *ac )
 {
   mensur* pm;
 
@@ -1059,7 +1051,7 @@ void sec_var_ratio(mensur* men, double *out_t1, double *out_t2 )
 /*
  * 各menのセグメントでインピーダンスを計算する
  */
-void do_calc_imp( double frq, mensur* men )
+void do_calc_imp( double frq, mensur* men, acoustic_constants *ac )
 {
   double complex z,z1,z2,k,x,m11,m12,m21,m22,n11,n12,n21,n22; 
   /* z : acoustic impedance z = p/u
@@ -1077,7 +1069,7 @@ void do_calc_imp( double frq, mensur* men )
   if( men->side != NULL ){/* has side branch */
     if( men->s_type == TONEHOLE ){
       /* 音孔としての扱い */
-      input_impedance(frq,men->side,men->s_ratio,&z1);
+      input_impedance(frq,men->side,men->s_ratio,&z1,ac);
       z2 = men->next->zi;
       z = z1*z2/(z1+z2);
       men->po = men->next->pi;/* should be removed in future? */
@@ -1086,8 +1078,8 @@ void do_calc_imp( double frq, mensur* men )
 
     }else if( men->s_type == ADDON && men->s_ratio > 0 ){
       /* ループ管のインピーダンス */
-      input_impedance(frq,men->side,1,&z1);/* z1 は未使用 */		
-      transmission_matrix(men->side,NULL,&m11,&m12,&m21,&m22);
+      input_impedance(frq,men->side,1,&z1,ac);/* z1 は未使用 */
+      transmission_matrix(men->side,NULL,&m11,&m12,&m21,&m22,ac);
 	    
       /*↓これは間違いだった(20040928:Yoshinobu Ishizaki)*/
       /*  z1 = m12/( m12*m21+(1-m11)*(1+m22) ); */
@@ -1104,11 +1096,11 @@ void do_calc_imp( double frq, mensur* men )
 
     }else if( men->s_type == SPLIT && men->s_ratio > 0 ){
       /* 複合管のインピーダンス */
-      input_impedance(frq,men->side,1,&z1); /* z1 は未使用 */
-      transmission_matrix(men->side,NULL,&m11,&m12,&m21,&m22);
-	    
+      input_impedance(frq,men->side,1,&z1,ac); /* z1 は未使用 */
+      transmission_matrix(men->side,NULL,&m11,&m12,&m21,&m22,ac);
+
       nm = get_join_men(men,men->side);
-      transmission_matrix(men->next,nm,&n11,&n12,&n21,&n22);
+      transmission_matrix(men->next,nm,&n11,&n12,&n21,&n22,ac);
 
       /* 面積比を掛ける */
       m12 /= (1 - men->s_ratio);
@@ -1154,7 +1146,7 @@ void do_calc_imp( double frq, mensur* men )
 
 #if 1
     /* より正確に計算する。詳細は"管壁摩擦再考"の文書を参照(2004.11.18) */
-    aa = (1+(GMM-1)/sqrt(Pr))*sqrt(2*w*nu)/c0/d;
+    aa = (1+(GMM-1)/sqrt(Pr))*sqrt(2*w*ac->nu)/ac->c0/d;
 #else
     /* 古典吸収による損失。小さすぎて合わない 
        教科書にも通常壁面損失より小さいと書いてあるが…
@@ -1166,22 +1158,22 @@ void do_calc_imp( double frq, mensur* men )
 		      (13.066677226339555 + 0.07653055039763432*
 		       pow(frq,2))));
 #endif
-    if( dump_calc == WALL ){
+    if( ac->dump_calc == WALL ){
 #if 1
-      k = csqrt( (w/c0)*(w/c0 - 2*(I-1)*aa) );
+      k = csqrt( (w/ac->c0)*(w/ac->c0 - 2*(I-1)*aa) );
 #else
       /* これも近似式だが大して結果は変わらない */
-      /*  k = (w/c0 + aa) - I*aa; */
+      /*  k = (w/ac->c0 + aa) - I*aa; */
       /* 敢えて虚部だけにaaをいれる。何故かこの方が音程面でうまくいく */
       /* HRで全体的に音程を高く見積もってしまっている。やっぱり不採用 */
-      k = w/c0 - I*aa;
+      k = w/ac->c0 - I*aa;
 #endif
-    }else if( dump_calc == NONE ){
-      k = w/c0;
+    }else if( ac->dump_calc == NONE ){
+      k = w/ac->c0;
     }
     x = k*L;
 
-    if( sec_var_calc ){
+    if( ac->sec_var_calc ){
       /* 断面積変化率を考慮した計算を行う */
       /* テーパ,直管両方をまとめた式を使っている */
       /* 計算してみたら、テーパ反転があるところで著しく実際と異なる
@@ -1192,10 +1184,10 @@ void do_calc_imp( double frq, mensur* men )
       sec_var_ratio(men,&t1,&t2);
 
       men->m11 = ( 2*k*s2*ccos(x) - t2*csin(x) )/(2*k*ss);
-      men->m12 = ( I * rhoc0 * csin(x) )/ss;
-      men->m21 = ( -2*I*k*( s2*t1-s1*t2 )*ccos(x) + 
+      men->m12 = ( I * ac->rhoc0 * csin(x) )/ss;
+      men->m21 = ( -2*I*k*( s2*t1-s1*t2 )*ccos(x) +
 		   I*( 4*k*k*s1*s2 + t1*t2 )*csin(x) )/
-	(4*rhoc0*k*k*ss);
+	(4*ac->rhoc0*k*k*ss);
       men->m22 = (2*k*s1*ccos(x) + t1*csin(x) )/(2*k*ss);
 
     }else{
@@ -1204,18 +1196,18 @@ void do_calc_imp( double frq, mensur* men )
 	/* straight */
 	s1 = PI/4*d*d;
 	men->m11 = men->m22 = ccos(x);
-	men->m12 = I*rhoc0*csin(x)/s1;
-	men->m21 = I*s1*csin(x)/rhoc0;
+	men->m12 = I*ac->rhoc0*csin(x)/s1;
+	men->m21 = I*s1*csin(x)/ac->rhoc0;
       }else{
 	/* taper */
 	r1 = d1/2;
 	r2 = d2/2;
-		
+
 	men->m11 = ( r2*x*ccos(x) -(r2-r1)*csin(x))/(r1*x);
-	men->m12 = I*rhoc0*csin(x)/(PI*r1*r2);
-	men->m21 = -I*PI*( (r2-r1)*(r2-r1)*x*ccos(x) - 
+	men->m12 = I*ac->rhoc0*csin(x)/(PI*r1*r2);
+	men->m21 = -I*PI*( (r2-r1)*(r2-r1)*x*ccos(x) -
 			   ((r2-r1)*(r2-r1) + x*x*r1*r2 )*csin(x) )/
-	  (k*k*L*L*rhoc0);
+	  (k*k*L*L*ac->rhoc0);
 	men->m22 = ( r1*x*ccos(x) + (r2-r1)*csin(x))/(r2*x);
 		
 	/* 以下逆テーパ問題で変更する前までの式を念のため残しておく 
@@ -1247,7 +1239,7 @@ void get_imp(mensur* men,double complex* out_z)
 }
 
 /*
- * 放射インピーダンスを計算する 
+ * 放射インピーダンスを計算する
  * 無限バッフル中の円盤による放射としての計算を行って
  * それを元にフランジ無しに近似
  * 城戸健一編著 日本音響学会編纂 基礎音響工学の90p
@@ -1256,13 +1248,13 @@ void get_imp(mensur* men,double complex* out_z)
  * zr : 放射インピーダンス = p/u, pは音圧,uは体積速度
  */
 #if 1
-void rad_imp( double frq,double d,double complex* zr )
+void rad_imp( double frq,double d,double complex* zr, acoustic_constants *ac )
 {
   double a,x,s;
   double re,im;
   double k;
 
-  k = PI2*frq/c0;
+  k = PI2*frq/ac->c0;
 
   if( d <= 0.0 ) return; /* エラー処理がない! */
 
@@ -1274,36 +1266,36 @@ void rad_imp( double frq,double d,double complex* zr )
   printf( "k=%f,f=%f,2ka=%f\n",k,f,x);
 #endif
     
-  /* j1は1次のベッセル関数。struveはストルーブ関数 */
+  /* bessel_j1は1次のベッセル関数。struveはストルーブ関数 */
   /* 音響インピーダンスにするために断面積で割る */
-  re = rhoc0/s * ( 1 - j1(x)/(k*a) );
-  im = rhoc0/s * struve( 1,x ) / (k*a);
-#if 0    
+  re = ac->rhoc0/s * ( 1 - bessel_j1(x)/(k*a) );
+  im = ac->rhoc0/s * struve( 1,x ) / (k*a);
+#if 0
   printf( "radiation impedance is %f,%f at freq %f\n",c->r,c->i,\
 	  PI2 / k );
 #endif
 
-  if( rad_calc == BUFFLE ){
+  if( ac->rad_calc == BUFFLE ){
     *zr = re + I*im;
-  }else if( rad_calc == PIPE ){
+  }else if( ac->rad_calc == PIPE ){
     /* フランジが無い場合はざっと実部が0.5倍で虚部が0.7倍らしい */
     *zr = 0.5*re + 0.7*I*im;
-  }else if( rad_calc == NONE ){
+  }else if( ac->rad_calc == NONE ){
     *zr = 0.0;
   }
 }
 #else
-/* 
+/*
  * Schwinger & Levineのフランジ無し放射特性計算の近似式を使う
  */
-void rad_imp( double frq,double d,double complex* zr )
+void rad_imp( double frq,double d,double complex* zr, acoustic_constants *ac )
 {
   double a,x,w,L,R,s,k,y;
   double complex bunbo,bunsi;
 
   a = 0.5*d;
   w = PI2*frq;
-  k = w/c0;
+  k = w/ac->c0;
   x = k*a;
   s = PI*a*a;
 
@@ -1326,7 +1318,7 @@ void rad_imp( double frq,double d,double complex* zr )
   bunbo = 1 + R * ( cos(y) + I*sin(y) );
   bunsi = 1 - R * ( cos(y) + I*sin(y) );
 
-  *zr = rhoc0/s * bunsi/bunbo;
+  *zr = ac->rhoc0/s * bunsi/bunbo;
 }
 #endif
 /*
@@ -1334,13 +1326,13 @@ void rad_imp( double frq,double d,double complex* zr )
  * e_ratioは終端断面積の調整因子(e_ratio*dを真の直径として計算する)
  */
 void input_impedance (double frq, mensur* men, double e_ratio,
-		      double complex* out_z )
+		      double complex* out_z, acoustic_constants *ac )
 {
   double complex p,u,z;
 
   mensur* pm = get_last_men(men);
     
-  /*p = 0.02 + 0.0*I;*/ /* 60dB(SPL)=20*10^-6 * 10^(60/20) 2004.11.19 */
+  p = 0.02 + 0.0*I; /* 60dB(SPL)=20*10^-6 * 10^(60/20) 2004.11.19 */
 
   /* 終端 */
   if( pm->df <= 0 || e_ratio == 0 ){/* closed end */
@@ -1351,8 +1343,8 @@ void input_impedance (double frq, mensur* men, double e_ratio,
     pm->y = 0.0;
 
   }else{/* open end */
-    rad_imp(frq,(pm->df)*e_ratio,&z);
-	
+    rad_imp(frq,(pm->df)*e_ratio,&z,ac);
+
     /*  u = 1.0 + 0.0 *I; */
     /*  p = z*u; */
     /* 開口端でのu値を適当に決めちゃっているが、それで良いのか? */
@@ -1367,7 +1359,7 @@ void input_impedance (double frq, mensur* men, double e_ratio,
        むしろ、理論式と合わないと思うのだが、
        u=p/z*sとすると音程はともかくインピーダンス曲線が良くあう。
     */
-    if( rad_calc != NONE )
+    if( ac->rad_calc != NONE )
       u = p/z;
     else{
       u = 1.0;
@@ -1382,7 +1374,7 @@ void input_impedance (double frq, mensur* men, double e_ratio,
 
   do{
     pm = pm->prev;
-    do_calc_imp(frq,pm);
+    do_calc_imp(frq,pm,ac);
   }while( pm->prev != NULL );
 
   /* input impedance at initial mensur cell */

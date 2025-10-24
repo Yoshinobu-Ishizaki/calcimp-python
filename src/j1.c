@@ -6,9 +6,9 @@
  *
  * SYNOPSIS:
  *
- * double x, y, j1();
+ * double x, y, bessel_j1();
  *
- * y = j1( x );
+ * y = bessel_j1( x );
  *
  *
  *
@@ -54,7 +54,7 @@
  *
  * The domain is divided into the intervals [0, 8] and
  * (8, infinity). In the first interval a 25 term Chebyshev
- * expansion is used, and a call to j1() is required.
+ * expansion is used, and a call to bessel_j1() is required.
  * In the second, the asymptotic trigonometric representation
  * is employed using two rational functions of degree 5/5.
  *
@@ -451,14 +451,14 @@ extern double log ( double );
 extern double sin ( double );
 extern double cos ( double );
 extern double sqrt ( double );
-double j1 ( double );
+double bessel_j1 ( double );
 #else
 double polevl(), p1evl(), log(), sin(), cos(), sqrt();
-double j1();
+double bessel_j1();
 #endif
 extern double TWOOPI, THPIO4, SQ2OPI;
 
-double j1(x)
+double bessel_j1(x)
 double x;
 {
 double w, z, p, q, xn;
@@ -501,7 +501,7 @@ if( x <= 5.0 )
 		}
 	z = x * x;
 	w = x * (polevl( z, YP, 5 ) / p1evl( z, YQ, 8 ));
-	w += TWOOPI * ( j1(x) * log(x)  -  1.0/x );
+	w += TWOOPI * ( bessel_j1(x) * log(x)  -  1.0/x );
 	return( w );
 	}
 

@@ -9,8 +9,8 @@
 extern "C" {
 #endif
 
-/* Bessel function of order one */
-double j1(double x);
+/* Bessel function of order one (renamed to avoid conflicts with system libraries) */
+double bessel_j1(double x);
 
 /* Struve function */
 double struve(double v, double x);

@@ -27,6 +27,7 @@ def pkg_config(*packages, **kw):
 def get_sources():
     sources = [
         'src/calcimp.c',
+        'src/acoustic_constants.c',
         'src/kutils.c',
         'src/zmensur.c',
         'src/j1.c',

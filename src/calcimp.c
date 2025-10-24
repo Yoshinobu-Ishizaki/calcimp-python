@@ -20,34 +20,10 @@
 #include "kutils.h"
 #include "zmensur.h"
 #include "calcimp.h"
-
-/* globals */
-extern int optind;
-extern int optopt;
-extern char* optarg;
-
-char out_name[256];
-
-extern char filecomment[];
-extern struct menlist* mensur_list;
-extern struct varlist* variable_list;
-extern double rho,rhoc0,c0,nu;
-
-#define MAX_FREQ 2000.0
-#define STEP_FREQ 2.5
-#define TEMPERATURE 24.0 /*QuickBasic時代の音程計算プログラムのデフォルト*/
-
-double max_frq;
-double step_frq;
-unsigned long num_frq;
-double temperature;
-int verbose_mode;
-int calc_transfer = 0; /*透過特性を計算するか?*/
-
-extern int rad_calc, dump_calc, sec_var_calc;
+#include "acoustic_constants.h"
 
 
-static PyObject* calculate_impedance(const char* filename, double max_freq, double step_freq, 
+static PyObject* calculate_impedance(const char* filename, double max_freq, double step_freq,
                                       unsigned long num_freq, double temperature) {
     mensur *mensur;
     double complex *imp;
@@ -56,14 +32,10 @@ static PyObject* calculate_impedance(const char* filename, double max_freq, doub
     int i;
     PyObject *freq_array, *real_array, *imag_array, *mag_array, *result_tuple;
     npy_intp dims[1];
+    acoustic_constants ac;
 
-    /* Initialize constants based on temperature */
-    c0 = 331.45 * sqrt(temperature / 273.16 + 1);
-    rho = 1.2929 * (273.16 / (273.16 + temperature));
-    rhoc0 = rho * c0;
-    
-    double mu = (18.2 + 0.0456*(temperature - 25)) * 1.0e-6;
-    nu = mu/rho;
+    /* Initialize acoustic constants based on temperature with default configuration */
+    init_acoustic_constants_default(&ac, temperature);
 
     /* Read mensur file */
     mensur = read_mensur(filename);
@@ -95,7 +67,7 @@ static PyObject* calculate_impedance(const char* filename, double max_freq, doub
         if (i == 0) {
             imp[i] = 0.0;
         } else {
-            input_impedance(frq, mensur, 1, &imp[i]);
+            input_impedance(frq, mensur, 1, &imp[i], &ac);
             imp[i] *= S;  /* Convert to acoustic impedance density */
         }
     }
@@ -152,10 +124,10 @@ static PyObject* calculate_impedance(const char* filename, double max_freq, doub
 
 static PyObject* py_calcimp(PyObject* self, PyObject* args, PyObject* kwargs) {
     const char* filename;
-    double max_freq = MAX_FREQ;
-    double step_freq = STEP_FREQ;
+    double max_freq = 2000.0;
+    double step_freq = 2.5;
     unsigned long num_freq = 0;
-    double temperature = TEMPERATURE;
+    double temperature = 24.0;
     static char* kwlist[] = {"filename", "max_freq", "step_freq", "num_freq", "temperature", NULL};
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|ddkd", kwlist,
