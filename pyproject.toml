@@ -13,4 +13,5 @@ dependencies = [
     "matplotlib>=3.10.7",
     "numpy",
     "pandas>=2.3.3",
+    "setuptools>=80.9.0",
 ]
