@@ -1,18 +1,24 @@
 /*
- * cephes.h - Header for Cephes math library functions used in calcimp
+ * cephes.h - Declarations for external Cephes library functions
+ *
+ * This header declares functions from the external Cephes libmd.a library.
+ * The library should be located at CEPHES_PATH (default: ../cephes_lib/)
  */
 
 #ifndef _CEPHES_H_
 #define _CEPHES_H_
 
+/* Include mconf.h from external Cephes library */
+#include "mconf.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Bessel function of order one (renamed to avoid conflicts with system libraries) */
-double bessel_j1(double x);
+/* Bessel function of order one (from Cephes libmd.a) */
+double j1(double x);
 
-/* Struve function */
+/* Struve function (from Cephes libmd.a) */
 double struve(double v, double x);
 
 #ifdef __cplusplus

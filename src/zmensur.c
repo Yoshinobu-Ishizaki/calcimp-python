@@ -12,6 +12,8 @@
 #include <ctype.h>
 #include <complex.h>
 #include <glib.h>
+#include <gsl/gsl_complex.h>
+#include <gsl/gsl_complex_math.h>
 
 #include "kutils.h"
 #include "zmensur.h"
@@ -19,6 +21,23 @@
 char filecomment[256];
 struct varlist* variable_list = NULL;
 struct menlist* mensur_list = NULL;
+
+/* ------------------------------ complex math wrappers ------------------------------*/
+/* Use GSL complex math functions for portability */
+
+static inline double complex gsl_to_c99_complex(gsl_complex z) {
+    return GSL_REAL(z) + I * GSL_IMAG(z);
+}
+
+static inline gsl_complex c99_to_gsl_complex(double complex z) {
+    gsl_complex result;
+    GSL_SET_COMPLEX(&result, creal(z), cimag(z));
+    return result;
+}
+
+#define csqrt(z) gsl_to_c99_complex(gsl_complex_sqrt(c99_to_gsl_complex(z)))
+#define csin(z) gsl_to_c99_complex(gsl_complex_sin(c99_to_gsl_complex(z)))
+#define ccos(z) gsl_to_c99_complex(gsl_complex_cos(c99_to_gsl_complex(z)))
 
 /* ------------------------------ subroutines ------------------------------*/
 mensur* create_men (double df,double db,double r,char* comm)
@@ -1053,10 +1072,10 @@ void sec_var_ratio(mensur* men, double *out_t1, double *out_t2 )
  */
 void do_calc_imp( double frq, mensur* men, acoustic_constants *ac )
 {
-  double complex z,z1,z2,k,x,m11,m12,m21,m22,n11,n12,n21,n22; 
+  double complex z,z1,z2,k,x,m11,m12,m21,m22,n11,n12,n21,n22;
   /* z : acoustic impedance z = p/u
      p : pressure
-     u : volume velocity 
+     u : volume velocity
      k : wave number */
   double d,d1,d2,w,L,aa,r1,r2,s1,s2,ss,t1,t2;
   mensur* nm;
@@ -1158,6 +1177,7 @@ void do_calc_imp( double frq, mensur* men, acoustic_constants *ac )
 		      (13.066677226339555 + 0.07653055039763432*
 		       pow(frq,2))));
 #endif
+
     if( ac->dump_calc == WALL ){
 #if 1
       k = csqrt( (w/ac->c0)*(w/ac->c0 - 2*(I-1)*aa) );
@@ -1253,6 +1273,8 @@ void rad_imp( double frq,double d,double complex* zr, acoustic_constants *ac )
   double a,x,s;
   double re,im;
   double k;
+  double j1_result, struve_result;
+
 
   k = PI2*frq/ac->c0;
 
@@ -1262,14 +1284,19 @@ void rad_imp( double frq,double d,double complex* zr, acoustic_constants *ac )
   x = k * d;
   /* フレッチャーの本によると断面積で割る必要あり!2004.11.19 */
   s = PI*a*a;
-#if 0 
+#if 0
   printf( "k=%f,f=%f,2ka=%f\n",k,f,x);
 #endif
-    
-  /* bessel_j1は1次のベッセル関数。struveはストルーブ関数 */
+
+
+  /* j1は1次のベッセル関数。struveはストルーブ関数 */
   /* 音響インピーダンスにするために断面積で割る */
-  re = ac->rhoc0/s * ( 1 - bessel_j1(x)/(k*a) );
-  im = ac->rhoc0/s * struve( 1,x ) / (k*a);
+  j1_result = j1(x);
+
+  struve_result = struve(1, x);
+
+  re = ac->rhoc0/s * ( 1 - j1_result/(k*a) );
+  im = ac->rhoc0/s * struve_result / (k*a);
 #if 0
   printf( "radiation impedance is %f,%f at freq %f\n",c->r,c->i,\
 	  PI2 / k );
@@ -1330,9 +1357,11 @@ void input_impedance (double frq, mensur* men, double e_ratio,
 {
   double complex p,u,z;
 
+
   mensur* pm = get_last_men(men);
-    
+
   p = 0.02 + 0.0*I; /* 60dB(SPL)=20*10^-6 * 10^(60/20) 2004.11.19 */
+
 
   /* 終端 */
   if( pm->df <= 0 || e_ratio == 0 ){/* closed end */

@@ -17,14 +17,6 @@ The codebase consists of two main components:
 - `xydata.c/h` - XY data structures
 - `matutil.c/h` - Matrix operations
 
-**Cephes Mathematical Library** (Stephen L. Moshier, borrowed):
-- Bessel functions: `j0.c`, `j1.c`, `jv.c`, `yn.c`
-- Special functions: `airy.c`, `gamma.c`, `struve.c`
-- Support functions: `polevl.c` (polynomial evaluation), `const.c` (constants), `isnan.c` (NaN checking), `mtherr.c` (error handling)
-- Headers: `cephes.h`, `mconf.h`
-
-These Cephes library files provide high-precision numerical computations essential for acoustic wave calculations. They represent approximately 4,200 lines of specialized mathematical code.
-
 ## Build & Development Commands
 
 ### Build from Source
@@ -33,7 +25,7 @@ These Cephes library files provide high-precision numerical computations essenti
 sudo apt-get install libglib2.0-dev libgsl-dev
 
 # Build the extension
-python setup.py build
+uv python setup.py build
 
 # Install in development mode
 pip install -e .
@@ -43,13 +35,11 @@ pip install -e .
 ```bash
 # Run unit tests and validation
 cd test
-python test_calcimp.py
-
 # Compare with reference implementation
-python test_calcimp.py  # Generates test_pycalcimp.imp and compares with test.imp
+uv run python test_calcimp.py
 
 # Interactive analysis
-jupyter notebook test/compare_impedance.ipynb
+uv run upyter notebook test/compare_impedance.ipynb
 ```
 
 ### Using the Module
