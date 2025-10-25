@@ -41,24 +41,8 @@ export CEPHES_PATH=/path/to/your/cephes_lib
 # Then build
 uv run python setup.py build
 ```
+Or use inline environment variable.
 
-### Build Options
-
-**Option 1: Using default path (../cephes_lib/)**
-```bash
-# Place libmd.a and mconf.h in ../cephes_lib/
-# No need to set CEPHES_PATH
-uv run python setup.py build_ext --inplace
-```
-
-**Option 2: Custom Cephes path**
-```bash
-# Set custom path
-export CEPHES_PATH=/custom/path/to/cephes_lib
-uv run python setup.py build
-```
-
-**Option 3: Inline environment variable**
 ```bash
 CEPHES_PATH=/path/to/cephes_lib uv run python setup.py build
 ```
