@@ -48,7 +48,7 @@ uv run python setup.py build
 ```bash
 # Place libmd.a and mconf.h in ../cephes_lib/
 # No need to set CEPHES_PATH
-uv run python setup.py build
+uv run python setup.py build_ext --inplace
 ```
 
 **Option 2: Custom Cephes path**
@@ -81,12 +81,12 @@ your-workspace/
 ### Development Mode (Recommended)
 ```bash
 # After building
-pip install -e .
+uv pip install -e .
 ```
 
 ### Regular Installation
 ```bash
-python setup.py install
+uv run python setup.py install
 ```
 
 ## 使用例 (Usage Example)
@@ -100,13 +100,18 @@ frequencies, real_part, imag_part, magnitude_db = calcimp.calcimp(
     "sample/test.men",      # Mensur file (tube geometry)
     max_freq=2000.0,        # Maximum frequency in Hz
     step_freq=2.5,          # Frequency step in Hz
-    temperature=24.0        # Temperature in Celsius
+    temperature=24.0,        # Temperature in Celsius
+    rad_calc=calcimp.PIPE,   # Type of radiation at the output end (PIPE/BUFFLE/NONE)
+    dump_calc=True,         # Include dumping on the wall
+    sec_var_calc=False      # Include effect by varying section area (experimental -- seems not adequate)
 )
 
 # Results are NumPy arrays
 print(f"Calculated {len(frequencies)} frequency points")
 print(f"Frequency range: {frequencies[0]:.1f} - {frequencies[-1]:.1f} Hz")
 ```
+
+Parameters can be omitted to use default values explicitly written in the example above.
 
 ## テスト (Testing)
 
@@ -160,8 +165,6 @@ sudo apt-get install libgsl-dev
 ## ライセンス (License)
 
 Original code by Yoshinobu Ishizaki (1999)
-
-Cephes Math Library: Copyright Stephen L. Moshier
 
 ## 参考文献 (References)
 
