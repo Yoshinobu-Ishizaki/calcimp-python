@@ -24,7 +24,8 @@
 
 
 static PyObject* calculate_impedance(const char* filename, double max_freq, double step_freq,
-                                      unsigned long num_freq, double temperature) {
+                                      unsigned long num_freq, double temperature,
+                                      int rad_calc, int dump_calc, int sec_var_calc) {
     mensur *mensur;
     double complex *imp;
     int n_imp;
@@ -34,8 +35,13 @@ static PyObject* calculate_impedance(const char* filename, double max_freq, doub
     npy_intp dims[1];
     acoustic_constants ac;
 
-    /* Initialize acoustic constants based on temperature with default configuration */
-    init_acoustic_constants_default(&ac, temperature);
+    /* Initialize acoustic constants based on temperature */
+    init_acoustic_constants(&ac, temperature);
+
+    /* Set configuration flags */
+    ac.rad_calc = rad_calc;
+    ac.dump_calc = dump_calc;
+    ac.sec_var_calc = sec_var_calc;
 
     /* Read mensur file */
     mensur = read_mensur(filename);
@@ -128,14 +134,24 @@ static PyObject* py_calcimp(PyObject* self, PyObject* args, PyObject* kwargs) {
     double step_freq = 2.5;
     unsigned long num_freq = 0;
     double temperature = 24.0;
-    static char* kwlist[] = {"filename", "max_freq", "step_freq", "num_freq", "temperature", NULL};
+    int rad_calc = PIPE;
+    int dump_calc_bool = 1;  /* True by default */
+    int sec_var_calc = FALSE;
+    int dump_calc;
+    static char* kwlist[] = {"filename", "max_freq", "step_freq", "num_freq", "temperature",
+                            "rad_calc", "dump_calc", "sec_var_calc", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|ddkd", kwlist,
-                                    &filename, &max_freq, &step_freq, &num_freq, &temperature)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|ddkdipp", kwlist,
+                                    &filename, &max_freq, &step_freq, &num_freq, &temperature,
+                                    &rad_calc, &dump_calc_bool, &sec_var_calc)) {
         return NULL;
     }
 
-    return calculate_impedance(filename, max_freq, step_freq, num_freq, temperature);
+    /* Convert boolean dump_calc to WALL/NONE */
+    dump_calc = dump_calc_bool ? WALL : NONE;
+
+    return calculate_impedance(filename, max_freq, step_freq, num_freq, temperature,
+                               rad_calc, dump_calc, sec_var_calc);
 }
 
 static PyMethodDef CalcimpMethods[] = {
@@ -143,10 +159,13 @@ static PyMethodDef CalcimpMethods[] = {
      "Calculate input impedance of a tube.\n\n"
      "Parameters:\n"
      "    filename (str): Path to the mensur file\n"
-     "    max_freq (float, optional): Maximum frequency (default: 2000.0)\n"
-     "    step_freq (float, optional): Frequency step (default: 2.5)\n"
+     "    max_freq (float, optional): Maximum frequency in Hz (default: 2000.0)\n"
+     "    step_freq (float, optional): Frequency step in Hz (default: 2.5)\n"
      "    num_freq (int, optional): Number of frequency points (overrides step_freq if > 0)\n"
-     "    temperature (float, optional): Temperature in Celsius (default: 24.0)\n\n"
+     "    temperature (float, optional): Temperature in Celsius (default: 24.0)\n"
+     "    rad_calc (int, optional): Radiation impedance mode - PIPE, BUFFLE, or NONE (default: PIPE)\n"
+     "    dump_calc (bool, optional): Enable wall damping calculation (default: True)\n"
+     "    sec_var_calc (bool, optional): Enable section variation calculation (default: False)\n\n"
      "Returns:\n"
      "    tuple: (frequencies, real_part, imaginary_part, magnitude_db)"},
     {NULL, NULL, 0, NULL}
@@ -161,7 +180,18 @@ static struct PyModuleDef calcimpmodule = {
 };
 
 PyMODINIT_FUNC PyInit_calcimp(void) {
+    PyObject *m;
+
     import_array();  /* Initialize numpy */
-    return PyModule_Create(&calcimpmodule);
+    m = PyModule_Create(&calcimpmodule);
+    if (m == NULL)
+        return NULL;
+
+    /* Export constants for radiation calculation modes */
+    PyModule_AddIntConstant(m, "NONE", NONE);
+    PyModule_AddIntConstant(m, "PIPE", PIPE);
+    PyModule_AddIntConstant(m, "BUFFLE", BUFFLE);
+
+    return m;
 }
 

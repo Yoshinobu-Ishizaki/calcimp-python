@@ -52,7 +52,10 @@ freq, real, imag, mag_db = calcimp.calcimp(
     "sample/test.men",      # Mensur file (tube geometry)
     max_freq=2000,          # Maximum frequency in Hz
     step_freq=2.5,          # Frequency step in Hz
-    temperature=24.0        # Temperature in Celsius
+    temperature=24.0,        # Temperature in Celsius
+    rad_calc=calcimp.PIPE,   # Type of radiation at the output end (PIPE/BUFFLE/NONE)
+    dump_calc=True,          # Include dumping on the wall 
+    sec_var_calc=False      # Include effect by varying section area (experimental -- seems not adequate)
 )
 
 # Returns tuple of 4 NumPy arrays:
