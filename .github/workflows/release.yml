@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v0.1.0, v1.0.0, etc.
+
+jobs:
+  build-wheels:
+    name: Build wheel on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.13"]
+
+    steps:
+      - name: Checkout calcimp-python
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Ubuntu-specific dependencies
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            automake \
+            autoconf \
+            libglib2.0-dev \
+            libgsl-dev \
+            pkg-config
+
+      # macOS-specific dependencies
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install \
+            automake \
+            autoconf \
+            glib \
+            gsl \
+            pkg-config
+
+      # Windows-specific dependencies using MSYS2
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-glib2
+            mingw-w64-x86_64-gsl
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-numpy
+            mingw-w64-x86_64-python-pip
+            automake
+            autoconf
+            make
+
+      # Clone and build cephes-lib
+      - name: Clone cephes-lib
+        run: |
+          git clone https://github.com/Yoshinobu-Ishizaki/cephes-lib.git ../cephes_lib
+
+      - name: Build cephes-lib (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        working-directory: ../cephes_lib
+        run: |
+          aclocal
+          automake --add-missing
+          autoconf
+          ./configure CFLAGS="-fPIC -O2"
+          make
+
+      - name: Build cephes-lib (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        working-directory: ../cephes_lib
+        run: |
+          aclocal
+          automake --add-missing
+          autoconf
+          ./configure
+          make
+
+      # Install Python dependencies
+      - name: Install Python dependencies (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          python -m pip install --upgrade pip
+          pip install build numpy setuptools wheel
+
+      - name: Install Python dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      # Build wheel packages
+      - name: Build wheel (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        env:
+          CEPHES_PATH: ../cephes_lib
+        run: |
+          python -m build --wheel
+
+      - name: Build wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CEPHES_PATH: ../cephes_lib
+        run: |
+          pip install build --break-system-packages
+          python -m build --wheel
+
+      # Upload wheels as artifacts for the release job
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: wheel-*
+          merge-multiple: true
+
+      - name: List downloaded files
+        run: ls -lh dist/
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+
+          # Create release notes
+          cat > release_notes.md <<EOF
+          # calcimp-python ${TAG_NAME}
+
+          Python C extension module for calculating input impedance of wind instrument tubes.
+
+          ## Installation
+
+          Download the appropriate wheel for your platform and install with pip:
+
+          \`\`\`bash
+          pip install calcimp_python-*.whl
+          \`\`\`
+
+          ## Platform-specific wheels:
+          - **Ubuntu/Linux**: \`calcimp_python-*-linux_*.whl\`
+          - **macOS**: \`calcimp_python-*-macosx_*.whl\`
+          - **Windows**: \`calcimp_python-*-win_*.whl\`
+
+          ## System Requirements
+          - Python 3.13+
+          - System libraries: glib2, gsl (see README for installation)
+
+          ## What's New
+          See CHANGELOG.md or commit history for details.
+          EOF
+
+          # Create release using GitHub CLI
+          gh release create "${TAG_NAME}" \
+            --title "Release ${TAG_NAME}" \
+            --notes-file release_notes.md \
+            dist/*.whl

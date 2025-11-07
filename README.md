@@ -71,32 +71,22 @@ your-workspace/
 
 ## インストール方法 (Installation)
 
-### Option 1: Install Pre-built Wheel from GitHub Actions (Easiest)
+### Option 1: Install Pre-built Wheel from GitHub Releases (Easiest)
 
-Pre-built wheel packages are available for Ubuntu, macOS, and Windows from GitHub Actions artifacts:
+Pre-built wheel packages are available for Ubuntu, macOS, and Windows from GitHub Releases:
 
 **Prerequisites:**
-- Install GitHub CLI: https://cli.github.com/
-- System dependencies (glib2, gsl) must still be installed
+- System dependencies (glib2, gsl) must still be installed (see System Dependencies section)
 
 **Steps:**
 
-1. **List available artifacts:**
-```bash
-gh run list --repo Yoshinobu-Ishizaki/calcimp-python --branch main --limit 5
-```
+1. **Visit the Releases page:**
+   https://github.com/Yoshinobu-Ishizaki/calcimp-python/releases
 
 2. **Download the wheel for your platform:**
-```bash
-# For Ubuntu
-gh run download --repo Yoshinobu-Ishizaki/calcimp-python -n calcimp-wheel-ubuntu-latest-py3.13
-
-# For macOS
-gh run download --repo Yoshinobu-Ishizaki/calcimp-python -n calcimp-wheel-macos-latest-py3.13
-
-# For Windows
-gh run download --repo Yoshinobu-Ishizaki/calcimp-python -n calcimp-wheel-windows-latest-py3.13
-```
+   - **Ubuntu/Linux**: `calcimp_python-*-linux_*.whl`
+   - **macOS**: `calcimp_python-*-macosx_*.whl`
+   - **Windows**: `calcimp_python-*-win_*.whl`
 
 3. **Install the wheel:**
 ```bash
@@ -107,7 +97,22 @@ pip install calcimp_python-*.whl
 uv pip install calcimp_python-*.whl
 ```
 
-**Note:** GitHub Actions artifacts expire after 90 days. For permanent releases, use tagged versions from the Releases page.
+**Alternative: Using GitHub CLI**
+
+If you have GitHub CLI installed (https://cli.github.com/):
+
+```bash
+# List available releases
+gh release list --repo Yoshinobu-Ishizaki/calcimp-python
+
+# Download latest release wheels
+gh release download --repo Yoshinobu-Ishizaki/calcimp-python --pattern "*.whl"
+
+# Install
+pip install calcimp_python-*.whl
+```
+
+**Note for Development Builds:** GitHub Actions artifacts from recent commits are also available but expire after 90 days. See the Actions tab for development builds.
 
 ### Option 2: Build from Source
 
@@ -194,6 +199,28 @@ uv run python setup.py build
 ```bash
 sudo apt-get install libgsl-dev
 ```
+
+## 開発者向け (For Developers)
+
+### Creating a Release
+
+To create a new release with pre-built wheels:
+
+1. **Create and push a version tag:**
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+2. **GitHub Actions will automatically:**
+   - Build wheels for Ubuntu, macOS, and Windows
+   - Run tests on all platforms
+   - Create a GitHub Release
+   - Upload wheels to the release
+
+3. **Tag naming convention:**
+   - Use semantic versioning: `v<major>.<minor>.<patch>`
+   - Examples: `v0.1.0`, `v1.0.0`, `v1.2.3`
 
 ## ライセンス (License)
 
