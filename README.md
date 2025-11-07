@@ -7,12 +7,21 @@ Python C extension module for calculating input impedance of wind instrument tub
 ## 要件 (Requirements)
 
 ### System Dependencies
+
+**Required for all installation methods (including pre-built wheels):**
+
 ```bash
 # Ubuntu/Debian
+sudo apt-get install libglib2.0-0 libgsl27
+
+# For building from source, also install development packages:
 sudo apt-get install libglib2.0-dev libgsl-dev gcc python3-dev
 
-# Fedora/RHEL
-sudo dnf install glib2-devel gsl-devel gcc python3-devel
+# macOS
+brew install glib gsl
+
+# Windows (MSYS2)
+pacman -S mingw-w64-x86_64-glib2 mingw-w64-x86_64-gsl
 ```
 
 ### Python Dependencies
@@ -61,6 +70,46 @@ your-workspace/
 ```
 
 ## インストール方法 (Installation)
+
+### Option 1: Install Pre-built Wheel from GitHub Actions (Easiest)
+
+Pre-built wheel packages are available for Ubuntu, macOS, and Windows from GitHub Actions artifacts:
+
+**Prerequisites:**
+- Install GitHub CLI: https://cli.github.com/
+- System dependencies (glib2, gsl) must still be installed
+
+**Steps:**
+
+1. **List available artifacts:**
+```bash
+gh run list --repo Yoshinobu-Ishizaki/calcimp-python --branch main --limit 5
+```
+
+2. **Download the wheel for your platform:**
+```bash
+# For Ubuntu
+gh run download --repo Yoshinobu-Ishizaki/calcimp-python -n calcimp-wheel-ubuntu-latest-py3.13
+
+# For macOS
+gh run download --repo Yoshinobu-Ishizaki/calcimp-python -n calcimp-wheel-macos-latest-py3.13
+
+# For Windows
+gh run download --repo Yoshinobu-Ishizaki/calcimp-python -n calcimp-wheel-windows-latest-py3.13
+```
+
+3. **Install the wheel:**
+```bash
+# Using pip
+pip install calcimp_python-*.whl
+
+# Or using uv
+uv pip install calcimp_python-*.whl
+```
+
+**Note:** GitHub Actions artifacts expire after 90 days. For permanent releases, use tagged versions from the Releases page.
+
+### Option 2: Build from Source
 
 ### Development Mode (Recommended)
 ```bash

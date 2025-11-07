@@ -140,14 +140,28 @@ jobs:
         run: |
           python test/test_calcimp.py
 
-      # Upload build artifacts
-      - name: Upload build artifacts
+      # Build wheel packages
+      - name: Build wheel (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        env:
+          CEPHES_PATH: ../cephes_lib
+        run: |
+          pip install build
+          python -m build --wheel
+
+      - name: Build wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CEPHES_PATH: ../cephes_lib
+        run: |
+          pip install build --break-system-packages
+          python -m build --wheel
+
+      # Upload wheel artifacts
+      - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: calcimp-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: |
-            build/
-            *.so
-            *.pyd
-            *.dll
-          if-no-files-found: warn
+          name: calcimp-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
