@@ -121,6 +121,7 @@ jobs:
         env:
           CEPHES_PATH: ../cephes_lib
         run: |
+          python -m pip install --upgrade --force-reinstall pip --break-system-packages
           pip install build --break-system-packages
           python -m build --wheel
 
