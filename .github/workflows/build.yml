@@ -1,0 +1,168 @@
+name: Build and Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.13"]
+
+    steps:
+      - name: Checkout calcimp-python
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Ubuntu-specific dependencies
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            automake \
+            autoconf \
+            libglib2.0-dev \
+            libgsl-dev \
+            pkg-config
+
+      # macOS-specific dependencies
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install \
+            automake \
+            autoconf \
+            glib \
+            gsl \
+            pkg-config
+
+      # Windows-specific dependencies using MSYS2
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-glib2
+            mingw-w64-x86_64-gsl
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-numpy
+            mingw-w64-x86_64-python-pip
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-cmake
+            automake
+            autoconf
+            make
+
+      # Clone and build cephes-lib
+      - name: Clone cephes-lib
+        run: |
+          git clone https://github.com/Yoshinobu-Ishizaki/cephes-lib.git ../cephes_lib
+
+      - name: Build cephes-lib (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        working-directory: ../cephes_lib
+        run: |
+          aclocal
+          automake --add-missing
+          autoconf
+          ./configure CFLAGS="-fPIC -O2"
+          make
+
+      - name: Build cephes-lib (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        working-directory: ../cephes_lib
+        run: |
+          aclocal
+          automake --add-missing
+          autoconf
+          ./configure
+          make
+
+      # Install Python dependencies
+      - name: Install Python dependencies (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy setuptools wheel
+
+      - name: Install Python dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      # Build calcimp-python
+      - name: Build calcimp-python (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        env:
+          CEPHES_PATH: ../cephes_lib
+        run: |
+          pip install -e .
+
+      - name: Build calcimp-python (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CEPHES_PATH: ../cephes_lib
+        run: |
+          pip install -e . --no-deps --break-system-packages
+
+      # Run tests
+      - name: Run tests (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          python test/test_calcimp.py
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          python test/test_calcimp.py
+
+      # Build wheel packages
+      - name: Build wheel (Ubuntu/macOS)
+        if: runner.os != 'Windows'
+        env:
+          CEPHES_PATH: ../cephes_lib
+        run: |
+          pip install build
+          python -m build --wheel
+
+      - name: Build wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CEPHES_PATH: ../cephes_lib
+        run: |
+          python -m pip install --upgrade --force-reinstall pip --break-system-packages
+          pip install build --break-system-packages
+          python -m build --wheel
+
+      # Upload wheel artifacts
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: calcimp-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error

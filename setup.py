@@ -2,6 +2,7 @@ from setuptools import setup, Extension
 import numpy as np
 import os
 import subprocess
+import platform
 
 def pkg_config(*packages, **kw):
     """Get compiler and linker flags from pkg-config."""
@@ -65,6 +66,12 @@ ext_kwargs = pkg_config('glib-2.0', 'gsl')
 # Get Cephes library configuration
 cephes_config = get_cephes_config()
 
+# Platform-specific linker flags
+extra_link_args = ext_kwargs.get('extra_link_args', [])
+if platform.system() == 'Windows':
+    # Allow multiple definitions to resolve conflicts between cephes and MSVCRT Bessel functions
+    extra_link_args.append('-Wl,--allow-multiple-definition')
+
 module = Extension('calcimp',
                   sources=get_sources(),
                   include_dirs=[np.get_include(), 'src'] +
@@ -74,11 +81,11 @@ module = Extension('calcimp',
                   library_dirs=ext_kwargs.get('library_dirs', []),
                   extra_compile_args=['-O3'] + ext_kwargs.get('extra_compile_args', []),
                   extra_objects=cephes_config['extra_objects'],  # Static library (.a file)
-                  extra_link_args=ext_kwargs.get('extra_link_args', []),
+                  extra_link_args=extra_link_args,
                   define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')])
 
 setup(name='calcimp',
-      version='0.1',
+      version='0.2.0',
       description='Calculate input impedance of tubes',
       ext_modules=[module],
       python_requires='>=3.6',

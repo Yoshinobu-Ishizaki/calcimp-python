@@ -7,12 +7,21 @@ Python C extension module for calculating input impedance of wind instrument tub
 ## 要件 (Requirements)
 
 ### System Dependencies
+
+**Required for all installation methods (including pre-built wheels):**
+
 ```bash
 # Ubuntu/Debian
+sudo apt-get install libglib2.0-0 libgsl27
+
+# For building from source, also install development packages:
 sudo apt-get install libglib2.0-dev libgsl-dev gcc python3-dev
 
-# Fedora/RHEL
-sudo dnf install glib2-devel gsl-devel gcc python3-devel
+# macOS
+brew install glib gsl
+
+# Windows (MSYS2)
+pacman -S mingw-w64-x86_64-glib2 mingw-w64-x86_64-gsl
 ```
 
 ### Python Dependencies
@@ -61,6 +70,51 @@ your-workspace/
 ```
 
 ## インストール方法 (Installation)
+
+### Option 1: Install Pre-built Wheel from GitHub Releases (Easiest)
+
+Pre-built wheel packages are available for Ubuntu, macOS, and Windows from GitHub Releases:
+
+**Prerequisites:**
+- System dependencies (glib2, gsl) must still be installed (see System Dependencies section)
+
+**Steps:**
+
+1. **Visit the Releases page:**
+   https://github.com/Yoshinobu-Ishizaki/calcimp-python/releases
+
+2. **Download the wheel for your platform:**
+   - **Ubuntu/Linux**: `calcimp_python-*-linux_*.whl`
+   - **macOS**: `calcimp_python-*-macosx_*.whl`
+   - **Windows**: `calcimp_python-*-win_*.whl`
+
+3. **Install the wheel:**
+```bash
+# Using pip
+pip install calcimp_python-*.whl
+
+# Or using uv
+uv pip install calcimp_python-*.whl
+```
+
+**Alternative: Using GitHub CLI**
+
+If you have GitHub CLI installed (https://cli.github.com/):
+
+```bash
+# List available releases
+gh release list --repo Yoshinobu-Ishizaki/calcimp-python
+
+# Download latest release wheels
+gh release download --repo Yoshinobu-Ishizaki/calcimp-python --pattern "*.whl"
+
+# Install
+pip install calcimp_python-*.whl
+```
+
+**Note for Development Builds:** GitHub Actions artifacts from recent commits are also available but expire after 90 days. See the Actions tab for development builds.
+
+### Option 2: Build from Source
 
 ### Development Mode (Recommended)
 ```bash
@@ -145,6 +199,28 @@ uv run python setup.py build
 ```bash
 sudo apt-get install libgsl-dev
 ```
+
+## 開発者向け (For Developers)
+
+### Creating a Release
+
+To create a new release with pre-built wheels:
+
+1. **Create and push a version tag:**
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+2. **GitHub Actions will automatically:**
+   - Build wheels for Ubuntu, macOS, and Windows
+   - Run tests on all platforms
+   - Create a GitHub Release
+   - Upload wheels to the release
+
+3. **Tag naming convention:**
+   - Use semantic versioning: `v<major>.<minor>.<patch>`
+   - Examples: `v0.1.0`, `v1.0.0`, `v1.2.3`
 
 ## ライセンス (License)
 
