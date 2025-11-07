@@ -166,12 +166,72 @@ The test will:
 ## Mensur File Format
 
 Mensur files (`.men`) describe tube geometry with CSV format:
+
+### Basic Format
 ```
 # Comment line: tube description
 df,db,length    # Front diameter, back diameter, length (all in mm)
 10,10,1000      # Cylindrical tube: 10mm diameter, 1000mm length
 10,0,0          # Terminator: open end
 ```
+
+### Extended Format (zmensur)
+
+The extended zmensur format supports advanced features for modeling complex wind instruments:
+
+#### Features
+- **Variable definitions**: Define reusable values
+- **Tone holes**: Model finger holes and water keys
+- **Valve branches**: Specify valve routing and detours
+- **Comments**: Add comments anywhere using `%`
+
+#### Special Line Prefixes
+- `%` - Comment (ignored until end of line)
+- `$name` - Define a sub-mensur section with the given name
+- `+name,ratio` - Insert a sub-mensur as an addition
+  - `ratio=0`: Not actually inserted
+  - `0 < ratio < 1`: Inserted as a branch (creates multiple bore path)
+- `-name,ratio` - Insert a sub-mensur as a tone hole
+  - `ratio=1`: Fully open hole
+  - `ratio=0`: Fully closed hole
+  - `0 < ratio < 1`: Partially open hole
+- `>name,ratio` - Start of a valve detour section
+- `<name,ratio` - End point where valve detour reconnects
+  - `0 < ratio < 1`: Half-valve effect
+
+#### Example
+```
+zmensur sample with valve % First line is file comment
+% Comments can appear anywhere
+bore_dia=15,
+valve_len=100,
+
+% Main bore
+15,15,20,main section
+>valve1,1           % Valve detour starts here
+15,15,30,after valve
+-hole1,0.8          % Tone hole (80% open)
+15,15,40,
+<valve1,1           % Valve detour reconnects here
+15,0,0,             % Open end terminator
+
+% Define valve detour path
+$valve1
+15,15,valve_len,valve tubing
+15,15,20,
+15,0,0,
+
+% Define tone hole geometry
+$hole1
+5,5,10,hole chimney
+5,0,0,              % Effective diameter: 0.8 × 5 = 4mm
+```
+
+#### Termination
+- `df,0,0` - Open end (flared or non-flared based on df)
+- `0,0,0` - Closed end
+
+For more details, see `doc/zmensur.md` (Japanese)
 
 ## トラブルシューティング (Troubleshooting)
 
