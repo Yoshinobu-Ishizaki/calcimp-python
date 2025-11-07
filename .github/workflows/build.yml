@@ -84,7 +84,7 @@ jobs:
           aclocal
           automake --add-missing
           autoconf
-          ./configure
+          ./configure CFLAGS="-fPIC -O2"
           make
 
       - name: Build cephes-lib (Windows)
@@ -117,7 +117,7 @@ jobs:
         env:
           CEPHES_PATH: ../cephes_lib
         run: |
-          python setup.py build_ext --inplace
+          pip install -e .
 
       - name: Build calcimp-python (Windows)
         if: runner.os == 'Windows'
@@ -125,7 +125,7 @@ jobs:
         env:
           CEPHES_PATH: ../cephes_lib
         run: |
-          python setup.py build_ext --inplace
+          pip install -e .
 
       # Run tests
       - name: Run tests (Ubuntu/macOS)
