@@ -316,6 +316,34 @@ static char** split_men_defs(char** lines) {
 static mensur* parse_group_recursive(char** lines, int *idx, const char *group_name, int *error);
 
 /*
+ * Check if a line looks like an unrecognized keyword
+ * Returns 1 if it looks like a keyword (starts with uppercase letter and contains no comma)
+ */
+static int is_unrecognized_keyword(const char *line) {
+    if (!line || strlen(line) == 0) return 0;
+
+    /* Check if starts with uppercase letter or special character */
+    if (isupper((unsigned char)line[0]) || line[0] == '[' || line[0] == ']' ||
+        line[0] == '{' || line[0] == '}' || line[0] == '>' ||
+        line[0] == '<' || line[0] == '|') {
+        /* If it contains a comma followed by numbers, it might be a cell definition */
+        const char *comma = strchr(line, ',');
+        if (comma) {
+            /* Check if there are numbers around the comma (could be df,db,r) */
+            const char *p = line;
+            int has_digit_before = 0;
+            while (p < comma && !has_digit_before) {
+                if (isdigit((unsigned char)*p)) has_digit_before = 1;
+                p++;
+            }
+            if (has_digit_before) return 0;  /* Looks like a cell definition */
+        }
+        return 1;  /* Looks like a keyword */
+    }
+    return 0;
+}
+
+/*
  * Parse df,db,r line
  */
 static int parse_xmen_cell(char *line, double *df, double *db, double *r, char *comment) {
@@ -519,6 +547,15 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
             } else {
                 cur = append_men(cur, df, db, r, comment);
             }
+        } else {
+            /* If it's not a valid cell and looks like a keyword, report error */
+            if (is_unrecognized_keyword(line)) {
+                fprintf(stderr, "Error: Unrecognized keyword: '%s'\n", line);
+                free(line);
+                *error = 1;
+                return NULL;
+            }
+            /* Otherwise, silently ignore (could be empty line or malformed cell) */
         }
 
         free(line);
@@ -923,6 +960,66 @@ int test_xmensur_error_handling(void) {
         failed++;
     }
 
+    /* Test 7: Unrecognized keyword */
+    test_count++;
+    printf("Test %d: Unrecognized keyword\n", test_count);
+    f = fopen("test_unknown_keyword.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\nUNKNOWN_KEYWORD\n10,0,0\nEND_MAIN\n");
+    fclose(f);
+    result = read_xmensur("test_unknown_keyword.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 8: Unrecognized keyword with comma */
+    test_count++;
+    printf("Test %d: Unrecognized keyword with comma\n", test_count);
+    f = fopen("test_unknown_with_comma.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\nBAD_COMMAND,param\n10,0,0\nEND_MAIN\n");
+    fclose(f);
+    result = read_xmensur("test_unknown_with_comma.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 9: Mixed case keyword (should fail) */
+    test_count++;
+    printf("Test %d: Unknown mixed case keyword\n", test_count);
+    f = fopen("test_mixed_case.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\nMyKeyword\n10,0,0\nEND_MAIN\n");
+    fclose(f);
+    result = read_xmensur("test_mixed_case.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 10: Valid keywords should still work */
+    test_count++;
+    printf("Test %d: All valid keywords\n", test_count);
+    f = fopen("test_all_valid_keywords.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\nOPEN_END\nEND_MAIN\n");
+    fclose(f);
+    result = read_xmensur("test_all_valid_keywords.xmen");
+    if (result != NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected non-NULL)\n\n");
+        failed++;
+    }
+
     /* Cleanup test files */
     remove("test_dup_var.xmen");
     remove("test_dup_group.xmen");
@@ -930,6 +1027,10 @@ int test_xmensur_error_handling(void) {
     remove("test_missing_end.xmen");
     remove("test_mismatch.xmen");
     remove("test_valid.xmen");
+    remove("test_unknown_keyword.xmen");
+    remove("test_unknown_with_comma.xmen");
+    remove("test_mixed_case.xmen");
+    remove("test_all_valid_keywords.xmen");
 
     printf("================================\n");
     printf("Tests completed: %d total, %d passed, %d failed\n", test_count, passed, failed);
