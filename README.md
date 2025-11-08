@@ -190,43 +190,71 @@ The test will:
 - Compare results with reference implementation
 - Generate output file: `test/test_pycalcimp.imp`
 
-## Mensur File Format
+## Mensur File Formats
 
-Mensur files (`.men`) describe tube geometry with CSV format:
+calcimp supports two file formats for describing tube geometry:
 
-### Basic Format
+### 1. ZMENSUR Format (.men)
+
+CSV-based format with `%` comments:
+
 ```
-# Comment line: tube description
-df,db,length    # Front diameter, back diameter, length (all in mm)
-10,10,1000      # Cylindrical tube: 10mm diameter, 1000mm length
-10,0,0          # Terminator: open end
-```
-
-### Extended Format (zmensur)
-
-The extended **zmensur format** supports advanced features for modeling complex wind instruments including:
-
-- **Variable definitions** and reusable sub-mensur sections
-- **Tone holes** with adjustable openness (`-name,ratio`)
-- **Valve branches** and detour routing (`>name,ratio` / `<name,ratio`)
-- **Comments** anywhere in the file using `%`
-
-**Simple example:**
-```
-trumpet bore % File description
-15,15,100,main bore
->valve1,1      % Valve bypass starts
-15,15,50,
-<valve1,1      % Valve bypass ends
-15,0,0,        % Open end
-
-$valve1        % Define valve path
-15,15,200,
-15,0,0,
+# Basic tube
+10,10,1000,     % Cylindrical tube: 10mm diameter, 1000mm length
+10,0,0,         % Open end terminator
 ```
 
-**For complete documentation** including all directives, syntax details, and examples, see:
-**[doc/zmensur.md](doc/zmensur.md)** - Extended zmensur format specification
+**Extended features:**
+- Variable definitions and reusable sub-mensur sections
+- Tone holes with adjustable openness (`-name,ratio`)
+- Valve branches and detour routing (`>name,ratio` / `<name,ratio`)
+
+**[See doc/zmensur.md](doc/zmensur.md)** for complete ZMENSUR format specification.
+
+### 2. XMENSUR Format (.xmen)
+
+Python-style format with `#` comments, brackets, and expressions:
+
+```
+# Trumpet with valve
+bore_dia = 11.5  # Variable definition
+
+[  # Main bore
+    10, bore_dia, 100,  # Can use expressions
+    <, VALVE1, 1,       # Valve branch
+    bore_dia, bore_dia, 150,
+    >, VALVE1, 1,       # Valve merge
+    OPEN_END
+]
+
+{, VALVE1  # Valve slide definition
+    bore_dia, bore_dia, 300,
+    OPEN_END
+}
+```
+
+**Key differences:**
+- Uses `#` for comments (like Python)
+- Supports Python arithmetic expressions and variables
+- Uses brackets `[]` and `{}` for grouping
+- Keywords: `OPEN_END`, `CLOSED_END`, `MAIN`, `GROUP`
+- Aliases: `<` = BRANCH, `>` = MERGE, `|` = SPLIT
+
+**[See doc/xmensur.md](doc/xmensur.md)** for complete XMENSUR format specification.
+
+### Usage
+
+Both formats work seamlessly - just use the appropriate file extension:
+
+```python
+import calcimp
+
+# ZMENSUR format
+freq, real, imag, mag = calcimp.calcimp("instrument.men")
+
+# XMENSUR format (automatically converted)
+freq, real, imag, mag = calcimp.calcimp("instrument.xmen")
+```
 
 ## トラブルシューティング (Troubleshooting)
 

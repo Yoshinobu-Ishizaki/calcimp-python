@@ -1,0 +1,32 @@
+# Simplified trumpet with valve
+# Demonstrates XMENSUR format with valve routing
+
+# Define tube dimensions
+bore_dia = 11.5  # Main bore diameter in mm
+valve_len = 300  # Valve slide length in mm
+
+[
+    # Mouthpiece and leadpipe
+    10, bore_dia, 100,  # Expanding from mouthpiece
+    bore_dia, bore_dia, 200,  # Cylindrical section
+
+    # First valve
+    <, VALVE1, 1,  # Valve branch point (fully open = 1)
+    bore_dia, bore_dia, 150,  # Main path continues
+    >, VALVE1, 1,  # Valve merge point
+
+    # Bell section
+    bore_dia, bore_dia, 100,
+    bore_dia, 15, 50,   # Start of bell flare
+    15, 25, 100,        # Bell flare
+    25, 50, 150,        # Bell expansion
+    50, 120, 200,       # Bell opening
+
+    OPEN_END
+]
+
+# Define valve slide path
+{, VALVE1
+    bore_dia, bore_dia, valve_len,  # Valve tubing
+    OPEN_END
+}

@@ -173,13 +173,13 @@ static PyMethodDef CalcimpMethods[] = {
 
 static struct PyModuleDef calcimpmodule = {
     PyModuleDef_HEAD_INIT,
-    "calcimp",
+    "_calcimp_c",
     "Extension module for calculating input impedance of tubes",
     -1,
     CalcimpMethods
 };
 
-PyMODINIT_FUNC PyInit_calcimp(void) {
+PyMODINIT_FUNC PyInit__calcimp_c(void) {
     PyObject *m;
 
     import_array();  /* Initialize numpy */

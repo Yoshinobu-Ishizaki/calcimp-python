@@ -34,7 +34,6 @@ class Men(object):
         # for printing total length
         self.xL = 0  # total length from 1st mensur
 
-    @property
     def append(self, next=None):
         self.next = next
         if next is not None:
@@ -330,12 +329,16 @@ def clear_mensur():
     del mensur[:]
     del group_names[:]
     del group_tree[:]
+    men_grp_table.clear()
 
 
 ######################################################################
 def build_mensur(lines):
     """Parse text lines which read from mensur file, then build mensur objects."""
     global group_tree, group_names
+
+    # Clear global state before building new mensur
+    clear_mensur()
 
     cur = None  # current mensur cell
     gnm = ''  # current group name
@@ -387,7 +390,8 @@ def build_mensur(lines):
                     cmt = ''
                 men = Men(df*0.001, db*0.001, r*0.001, comment=cmt, group=gnm)  # create men
 
-                if not cur:
+                if cur is None:
+                    # First item in this group - initialize table
                     if group_tree[0] == 'MAIN':
                         men_grp_table['MAIN'] = men
                     else:
@@ -395,7 +399,8 @@ def build_mensur(lines):
                         men_grp_table[gnm] = men
                     cur = men
                 else:
-                    # cur.append(men)
+                    # Not first item - append to chain
+                    cur.append(men)
                     cur = men
 
     # debug
@@ -417,3 +422,101 @@ def read_mensur_file(path):
     men = build_mensur(lns)
 
     return men
+
+
+def convert_to_zmensur(men):
+    """Convert XMENSUR Men structure to ZMENSUR format string.
+
+    Returns a string containing the zmensur representation that can be
+    written to a .men file for use with the C calcimp engine.
+    """
+    output_lines = []
+
+    # First line: file comment
+    output_lines.append("converted from xmensur")
+
+    # Collect all child groups for later output
+    child_groups = {}
+
+    def collect_children(m):
+        """Recursively collect all child mensur groups"""
+        while m:
+            if m.child and m.c_name:
+                if m.c_name not in child_groups:
+                    child_groups[m.c_name] = m.child
+            m = m.next
+
+    def output_mensur_chain(m, is_main=False):
+        """Output a chain of mensur cells"""
+        lines = []
+        while m:
+            # Output the basic geometry
+            # Convert from m (SI units) back to mm
+            df_mm = m.df * 1000
+            db_mm = m.db * 1000
+            r_mm = m.r * 1000
+
+            # Add comment if present
+            comment = f"% {m.comment}" if m.comment else ""
+            lines.append(f"{df_mm},{db_mm},{r_mm},{comment}")
+
+            # Handle special connection types
+            if m.child and m.c_name:
+                if m.c_type == 'BRANCH':
+                    # XMENSUR BRANCH maps to zmensur > (valve start)
+                    lines.append(f">{m.c_name},{m.c_ratio}")
+                elif m.c_type == 'MERGE':
+                    # XMENSUR MERGE maps to zmensur < (valve end)
+                    lines.append(f"<{m.c_name},{m.c_ratio}")
+                elif m.c_type == 'SPLIT':
+                    # XMENSUR SPLIT/TONEHOLE maps to zmensur - (tone hole)
+                    lines.append(f"-{m.c_name},{m.c_ratio}")
+
+            m = m.next
+
+        return lines
+
+    # First pass: collect all child groups
+    collect_children(men)
+
+    # Output main mensur
+    main_lines = output_mensur_chain(men, is_main=True)
+    output_lines.extend(main_lines)
+
+    # Output child groups (sub-mensurs)
+    for name, child_men in child_groups.items():
+        output_lines.append(f"\n${name}")
+        child_lines = output_mensur_chain(child_men)
+        output_lines.extend(child_lines)
+
+    return '\n'.join(output_lines)
+
+
+def xmensur_to_zmensur_file(xmen_path, zmen_path=None):
+    """Convert an XMENSUR file to ZMENSUR format.
+
+    Args:
+        xmen_path: Path to input .xmen file
+        zmen_path: Path to output .men file (optional, defaults to same name with .men extension)
+
+    Returns:
+        Path to the generated zmensur file
+    """
+    import os
+
+    # Read and parse XMENSUR file
+    men = read_mensur_file(xmen_path)
+
+    # Convert to ZMENSUR format
+    zmensur_text = convert_to_zmensur(men)
+
+    # Determine output path
+    if zmen_path is None:
+        base = os.path.splitext(xmen_path)[0]
+        zmen_path = base + '.men'
+
+    # Write output file
+    with open(zmen_path, 'w') as f:
+        f.write(zmensur_text)
+
+    return zmen_path

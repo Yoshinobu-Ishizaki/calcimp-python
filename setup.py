@@ -39,7 +39,7 @@ class CustomBuildExt(build_ext):
         # Update extension configuration with cephes library paths
         cephes_config = self.get_cephes_config()
         for ext in self.extensions:
-            if ext.name == 'calcimp':
+            if ext.name == 'calcimp._calcimp_c':
                 ext.include_dirs.extend(cephes_config['include_dirs'])
                 ext.extra_objects.extend(cephes_config['extra_objects'])
 
@@ -208,7 +208,8 @@ if platform.system() == 'Windows':
     extra_link_args.append('-Wl,--allow-multiple-definition')
 
 # Create extension without cephes configuration (will be added during build)
-module = Extension('calcimp',
+# Extension module is named calcimp._calcimp_c to avoid name collision with package
+module = Extension('calcimp._calcimp_c',
                   sources=get_sources(),
                   include_dirs=[np.get_include(), 'src'] +
                                ext_kwargs.get('include_dirs', []),
@@ -220,9 +221,11 @@ module = Extension('calcimp',
                   define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')])
 
 setup(name='calcimp',
-      version='0.3.1',
+      version='0.4.0',
       description='Calculate input impedance of tubes',
       ext_modules=[module],
+      packages=['calcimp'],
+      package_dir={'calcimp': 'calcimp'},
       cmdclass={'build_ext': CustomBuildExt},
       python_requires='>=3.6',
       install_requires=['numpy']
