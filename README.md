@@ -221,9 +221,9 @@ bore_dia = 11.5  # Variable definition
 
 [  # Main bore
     10, bore_dia, 100,  # Can use expressions
-    <, VALVE1, 1,       # Valve branch
+    >, VALVE1, 1,       # Valve branch
     bore_dia, bore_dia, 150,
-    >, VALVE1, 1,       # Valve merge
+    <, VALVE1, 1,       # Valve merge
     OPEN_END
 ]
 
