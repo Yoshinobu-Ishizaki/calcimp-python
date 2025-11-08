@@ -49,7 +49,6 @@ END_MAIN
 # MAINの後にスライドなどに対応する要素メンズールのグループを作れる
 GROUP, V1LOOP
 12,12,100
-OPEN_END
 END_GROUP
 
 #説明終わり

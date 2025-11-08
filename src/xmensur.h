@@ -8,6 +8,9 @@
 
 #include "zmensur.h"
 
+/* defines reserved keywords and their flags */
+enum{ MAIN = 1, END_MAIN, GROUP, END_GROUP, INSERT, SPLIT, BRANCH, MERGE };
+
 /* Main function to read XMENSUR format file */
 mensur* read_xmensur(const char *path);
 

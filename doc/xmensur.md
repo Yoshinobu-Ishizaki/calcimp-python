@@ -1,9 +1,9 @@
 ---
 author: ysnbiszk@gmail.com
 date: 2018.3.30
-title: Calcimpy Basics
+title: XMENSUR for calcimp
 ---
-# Calcimpy Basics
+# XMENSUR for calcimp
 
 ## Goal
 
@@ -18,15 +18,17 @@ XMEN format is defined here to notify air column's shape (MENSUR).
 
 It is a CSV text file with '.xmen' as its extension.
 
-Any spaces and tabs are ignored.
+Any spaces and tabs and blank lines are ignored.
 
 Comment is inserted at any position starting with  '#' (same as Python).
 
 Unit is in mm. All calculation is done under SI unit system.
 
-Output is frequency(Hz), impedance(real), impedance(imaginary), magnitude (20Log10(abs(impedance))).
+3 types of line are valid for xmensur file.
 
-Python's numeral and arithmetic notation such as '+-*/**', '1e-3' and assignment 'x = 10.2' can be used at any point except it conflict with pre-defined keywords.
+- Variable definition such as `x = 1.2`. Simple arithmetic(`+-*/()`) code can be used. ex. `y = (x-3.4)*2`. Defined variables can be used in Marker or Cell line. Duplicated definition of same variable name is not allowed.
+- Marker lines such as `GROUP/END_GROUP,MAIN/END_MAIN,INSERT(@),SPLIT(|),BRANCH(>),MERGE(<)`
+- Normal mensur Cell definition `dia_forward, dia_backward, rel_len`
 
 ### Basics
 
@@ -37,7 +39,7 @@ Df denotes Diameter Forward, db: Diameter Backward, R: relative length.
 It can be expressed by simple line.
 
 ```
-df,db,r
+df,db,len
 ```
 It is a straight tube if df == db.
 
@@ -56,6 +58,8 @@ and for closed end,
 df,db,r,
 0,0,0,
 ```
+
+Here, df means dia forward, db is dia backward and r is a relative length of axis from forward to backward position.
 
 You can use pre-defined keywords `OPEN_END`, `CLOSED_END` to instead of writing `db,0,0,` or `0,0,0` directly.
 
@@ -126,6 +130,13 @@ This group can be inserted using `INSERT` or `@` in XMEN.
 INSERT, name
 ```
 
+Notice that MAIN/END_MAIN is a special case of GROUP.
+
+Duplicated definition of GROUP with same name is not allowed.
+
+GROUP can be nested.
+
+GROUP/END_GROUP pair must be completely matched.
 
 ### SPLIT PATH (TONEHOLE)
 
@@ -206,6 +217,8 @@ OPEN_END
 ``` 
 
 ## IMPEDANCE CALCULATION
+
+Output is frequency(Hz), impedance(real), impedance(imaginary), magnitude (20Log10(abs(impedance))).
 
 ### Webster equation
 
