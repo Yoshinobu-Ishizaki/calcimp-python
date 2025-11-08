@@ -204,61 +204,29 @@ df,db,length    # Front diameter, back diameter, length (all in mm)
 
 ### Extended Format (zmensur)
 
-The extended zmensur format supports advanced features for modeling complex wind instruments:
+The extended **zmensur format** supports advanced features for modeling complex wind instruments including:
 
-#### Features
-- **Variable definitions**: Define reusable values
-- **Tone holes**: Model finger holes and water keys
-- **Valve branches**: Specify valve routing and detours
-- **Comments**: Add comments anywhere using `%`
+- **Variable definitions** and reusable sub-mensur sections
+- **Tone holes** with adjustable openness (`-name,ratio`)
+- **Valve branches** and detour routing (`>name,ratio` / `<name,ratio`)
+- **Comments** anywhere in the file using `%`
 
-#### Special Line Prefixes
-- `%` - Comment (ignored until end of line)
-- `$name` - Define a sub-mensur section with the given name
-- `+name,ratio` - Insert a sub-mensur as an addition
-  - `ratio=0`: Not actually inserted
-  - `0 < ratio < 1`: Inserted as a branch (creates multiple bore path)
-- `-name,ratio` - Insert a sub-mensur as a tone hole
-  - `ratio=1`: Fully open hole
-  - `ratio=0`: Fully closed hole
-  - `0 < ratio < 1`: Partially open hole
-- `>name,ratio` - Start of a valve detour section
-- `<name,ratio` - End point where valve detour reconnects
-  - `0 < ratio < 1`: Half-valve effect
-
-#### Example
+**Simple example:**
 ```
-zmensur sample with valve % First line is file comment
-% Comments can appear anywhere
-bore_dia=15,
-valve_len=100,
+trumpet bore % File description
+15,15,100,main bore
+>valve1,1      % Valve bypass starts
+15,15,50,
+<valve1,1      % Valve bypass ends
+15,0,0,        % Open end
 
-% Main bore
-15,15,20,main section
->valve1,1           % Valve detour starts here
-15,15,30,after valve
--hole1,0.8          % Tone hole (80% open)
-15,15,40,
-<valve1,1           % Valve detour reconnects here
-15,0,0,             % Open end terminator
-
-% Define valve detour path
-$valve1
-15,15,valve_len,valve tubing
-15,15,20,
+$valve1        % Define valve path
+15,15,200,
 15,0,0,
-
-% Define tone hole geometry
-$hole1
-5,5,10,hole chimney
-5,0,0,              % Effective diameter: 0.8 × 5 = 4mm
 ```
 
-#### Termination
-- `df,0,0` - Open end (flared or non-flared based on df)
-- `0,0,0` - Closed end
-
-For more details, see `doc/zmensur.md` (Japanese)
+**For complete documentation** including all directives, syntax details, and examples, see:
+**[doc/zmensur.md](doc/zmensur.md)** - Extended zmensur format specification
 
 ## トラブルシューティング (Troubleshooting)
 

@@ -1,64 +1,223 @@
-zmensurについて
-===
+# Zmensur File Format
 
+## Overview
 
-通常のmensur形式を拡張したもので、変数の定義、音孔(唾抜き含む)の指定、
-バルブ分岐の指定が出来る
-また、コメント行をいたるところに入れることが出来る
-calcimpとcalcspdがこの形式を使って計算する。
+The **zmensur format** is an extended version of the traditional mensur format that supports:
 
-以下はサンプルである。
+- **Variable definitions**
+- **Tone hole specifications** (including water keys)
+- **Valve branch routing**
+- **Comments** throughout the file
+
+This format is used by `calcimp` and `calcspd` for acoustic calculations.
+
+---
+
+## File Structure
+
+### Basic Line Format
+
+Each line in a zmensur file follows this pattern:
 
 ```
-zmensur sample % 1行目はファイルコメントとして扱われる
-% 各行で%以降行末まではコメントとして無視される
+df,db,length,comment
+```
+
+- `df` - Front diameter (mm)
+- `db` - Back diameter (mm)
+- `length` - Length (mm)
+- `comment` - Optional description
+
+### Comments
+
+Lines starting with `%` or text after `%` on any line are treated as comments and ignored.
+
+```
+% This entire line is a comment
+10,10,100,tube section % This is also a comment
+```
+
+### File Header
+
+The first line is treated as a file comment/description:
+
+```
+zmensur sample % First line describes the file
+```
+
+---
+
+## Special Directives
+
+### Variables
+
+Define variables with `name=value,` syntax:
+
+```
 sl1=20,
 sl2=15,
-%このように1行1変数で定義が出来る
-10,10,10,zmen test%従来のmensur形式同様df,db,r,commentを指定
-10,12,15,taper
-+add3,1
-%+で始まる行は後で定義される部分メンズールを追加として挿入する
-%但し2列目の値が挿入分の考慮値でこれが0だと実際には挿入
-%していないことになる。
-%2列目の値を0-1の間にすると挿入分を枝として持つ複メンズールとなる。
-15,15,20,
--th1,0.8
-%-で始まるのは後で定義される部分メンズールを音孔として計算時に考慮する。
-%2列目が1なら完全に開いた音孔、0なら塞がった音孔で、0-1の間なら
-%中途半端に開いた音孔となる
->valve1,1
-15,15,20,
-<valve,1
-%>,<で始まるのは、後で定義される部分メンズールをその位置に繋ぐ。
-%バルブによる迂回指定を行うときに使えるはず。
-%2列目が0-1の間のときはハーフバルブに対応する。
-%>で始まるところが迂回の先頭で、
-%<の位置に迂回の終端を繋ぐと解釈する。
-15,15,30,
-15,0,0,
-%2列目,3列目が0ならメンズールの終わりを示す
-%終端を閉じた状態にしたければ0,0,0,とすれば良い。
+% One variable per line
+```
 
+### Tube Sections
+
+Standard tube segments use the basic format:
+
+```
+10,10,10,cylindrical section
+10,12,15,tapered section
+```
+
+### Termination
+
+End a mensur (main tube or branch) with `df,0,0,`:
+
+```
+15,0,0,     % Open end
+0,0,0,      % Closed end
+```
+
+---
+
+## Advanced Features
+
+### 1. Addition Segments (`+`)
+
+Insert a sub-mensur defined elsewhere:
+
+```
++add3,1
+```
+
+**Format:** `+name,ratio`
+
+- `ratio = 1` - Fully inserted into the main tube
+- `ratio = 0` - Not inserted (ignored)
+- `0 < ratio < 1` - Creates a branch with partial insertion
+
+### 2. Tone Holes (`-`)
+
+Add a tone hole at this position:
+
+```
+-th1,0.8
+```
+
+**Format:** `-name,openness`
+
+- `openness = 1` - Fully open hole
+- `openness = 0` - Fully closed hole
+- `0 < openness < 1` - Partially open hole
+
+The hole geometry is defined in a separate `$name` section.
+
+### 3. Valve Routing (`>` and `<`)
+
+Create valve bypass paths:
+
+```
+>valve1,1    % Start of bypass
+15,15,20,    % Main path continues
+<valve1,1    % End of bypass (rejoins main path)
+```
+
+**Format:** `>name,ratio` and `<name,ratio`
+
+- `>` marks the start of a detour
+- `<` marks where the detour rejoins
+- `ratio = 1` - Valve fully engaged
+- `0 < ratio < 1` - Partial valve engagement (half-valve)
+
+### 4. Sub-Mensur Definitions (`$`)
+
+Define reusable tube sections referenced by `+`, `-`, `>`, or `<`:
+
+```
 $add3
-% $で始まる行はバルブもしくは音孔の部分メンズールを$以降の名前で定義する
+% Define geometry for "add3"
 15,15,200,
 15,0,0,
-%各部分メンズールの終わりは本体の終わりと同じように指定する。
-%ここでの終端条件指定は余り意味はないが分岐の終わりを示すために必要
+
 $th1
+% Tone hole geometry
 4,4,8,
 4,0,0,
-%音孔の場合の終端条件は、-行で読込んだときの比率をここでの直径に
-%掛けたものが使われる。本例では0.8x4=3.2が正味の終端直径として
-%計算されることになる
+
+$valve1
+% Valve bypass path
+15,15,100,
+15,15,20,
+15,15,100,
+15,0,0,
+```
+
+**Important notes:**
+- Each sub-mensur must end with a termination line (`df,0,0,`)
+- For tone holes: effective diameter = `openness × df`
+  - Example: `-th1,0.8` with `df=4` → effective diameter = 3.2mm
+
+---
+
+## Complete Example
+
+```
+zmensur sample % File description
+% Variable definitions
+sl1=20,
+sl2=15,
+
+% Main tube body
+10,10,10,zmen test % Basic format: df,db,r,comment
+10,12,15,taper
+
++add3,1          % Insert "add3" segment fully
+
+15,15,20,
+-th1,0.8         % Tone hole at 80% open
+
+>valve1,1        % Valve bypass starts
+15,15,20,
+<valve1,1        % Valve bypass ends
+
+15,15,30,
+15,0,0,          % Open end termination
+
+% Sub-mensur definitions
+$add3
+15,15,200,
+15,0,0,
+
+$th1
+4,4,8,           % With 0.8 ratio → 3.2mm effective diameter
+4,0,0,
+
 $valve1
 15,15,100,
 15,15,20,
 15,15,100,
-15,0,0
-%迂回部分のメンズール指定。
+15,0,0,
 
-%end
-
+% End of file
 ```
+
+---
+
+## Summary Table
+
+| Prefix | Purpose | Format | Notes |
+|--------|---------|--------|-------|
+| `%` | Comment | `% text` | Ignored by parser |
+| (none) | Tube segment | `df,db,length,comment` | Basic geometry |
+| `+` | Add segment | `+name,ratio` | Insert sub-mensur |
+| `-` | Tone hole | `-name,openness` | 0=closed, 1=open |
+| `>` | Valve start | `>name,ratio` | Begin bypass path |
+| `<` | Valve end | `<name,ratio` | Rejoin main path |
+| `$` | Define sub-mensur | `$name` | Followed by geometry |
+
+---
+
+## Notes
+
+- Each sub-mensur definition's termination condition (open/closed) is specified but may be overridden by the reference ratio
+- Valve routing allows modeling complex wind instrument valve systems
+- The format is backward-compatible with traditional mensur files
