@@ -220,7 +220,7 @@ module = Extension('calcimp',
                   define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')])
 
 setup(name='calcimp',
-      version='0.2.0',
+      version='0.3.0',
       description='Calculate input impedance of tubes',
       ext_modules=[module],
       cmdclass={'build_ext': CustomBuildExt},
