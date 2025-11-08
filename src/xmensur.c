@@ -525,6 +525,15 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
                 char *comma = strchr(p, ',');
                 if (comma) {
                     *comma = '\0';
+
+                    /* Trim whitespace from group name */
+                    while (*p && isspace((unsigned char)*p)) p++;
+                    char *end = p + strlen(p) - 1;
+                    while (end >= p && isspace((unsigned char)*end)) {
+                        *end = '\0';
+                        end--;
+                    }
+
                     strncpy(cur->sidename, p, 15);
                     cur->sidename[15] = '\0';
 
@@ -548,6 +557,15 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
                 char *comma = strchr(p, ',');
                 if (comma) {
                     *comma = '\0';
+
+                    /* Trim whitespace from group name */
+                    while (*p && isspace((unsigned char)*p)) p++;
+                    char *end = p + strlen(p) - 1;
+                    while (end >= p && isspace((unsigned char)*end)) {
+                        *end = '\0';
+                        end--;
+                    }
+
                     strncpy(cur->sidename, p, 15);
                     cur->sidename[15] = '\0';
 
@@ -571,6 +589,15 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
                 char *comma = strchr(p, ',');
                 if (comma) {
                     *comma = '\0';
+
+                    /* Trim whitespace from group name */
+                    while (*p && isspace((unsigned char)*p)) p++;
+                    char *end = p + strlen(p) - 1;
+                    while (end >= p && isspace((unsigned char)*end)) {
+                        *end = '\0';
+                        end--;
+                    }
+
                     strncpy(cur->sidename, p, 15);
                     cur->sidename[15] = '\0';
 

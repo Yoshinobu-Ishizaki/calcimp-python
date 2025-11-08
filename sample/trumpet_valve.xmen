@@ -11,9 +11,9 @@ valve_len = 300  # Valve slide length in mm
     bore_dia, bore_dia, 200,  # Cylindrical section
 
     # First valve
-    <, VALVE1, 1,  # Valve branch point (fully open = 1)
+    >, VALVE1, 1,  # Valve branch point (fully open = 1)
     bore_dia, bore_dia, 150,  # Main path continues
-    >, VALVE1, 1,  # Valve merge point
+    <, VALVE1, 1,  # Valve merge point
 
     # Bell section
     bore_dia, bore_dia, 100,

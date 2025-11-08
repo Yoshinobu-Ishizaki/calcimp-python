@@ -87,19 +87,14 @@ def test_all_sample_xmen_files():
 
     xmen_files.sort()  # Sort for consistent ordering
 
-    # Known problematic files (BRANCH/MERGE order issue)
-    skip_files = ['branch.xmen']  # Has MERGE before BRANCH which is incorrect
+    # No files to skip - all should work now
+    skip_files = []
 
     xmen_files_to_test = [f for f in xmen_files if os.path.basename(f) not in skip_files]
-    skipped_files = [f for f in xmen_files if os.path.basename(f) in skip_files]
 
     print(f"Found {len(xmen_files)} XMEN file(s):")
     for f in xmen_files_to_test:
         print(f"  - {os.path.basename(f)}")
-    if skipped_files:
-        print(f"\nSkipping {len(skipped_files)} problematic file(s):")
-        for f in skipped_files:
-            print(f"  - {os.path.basename(f)} (BRANCH/MERGE order issue)")
     print()
 
     # Test each file
@@ -115,11 +110,9 @@ def test_all_sample_xmen_files():
     print()
     print("=" * 60)
     print(f"Results: {passed} passed, {failed} failed out of {len(xmen_files_to_test)} tested")
-    if skipped_files:
-        print(f"         ({len(skipped_files)} file(s) skipped)")
 
     if failed == 0:
-        print("✓ All tested files PASSED!")
+        print("✓ All files PASSED!")
         return True
     else:
         print("✗ Some tests FAILED!")
