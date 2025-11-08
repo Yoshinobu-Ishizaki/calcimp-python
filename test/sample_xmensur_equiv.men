@@ -1,0 +1,43 @@
+eXtended MENsur file sample - equivalent ZMENSUR format
+% This is the ZMENSUR equivalent of sample_xmensur.xmen
+% Variables are expanded: v1=1, s_main_pull=4.4
+% All groups are directly inlined in sequence
+
+% MPC30C4 group content
+20,18,1,コメント
+18,16,1,
+16,8,10,
+8,4,5,
+4,6.5,50
+
+% Main bore
+8,12,400,Mouthpipe
+12.8,12.8,4.4
+12,12,200,
+12.8,12.8,4.4
+
+% Valve branch start
+>V1LOOP,1
+13,13,20
+<V1LOOP,1
+
+% Continue main bore
+12,12,600,
+
+% Anstoss group content
+12,16,400,
+
+% BELL group content
+16,32,200,
+32,64,100,
+64,128,50,
+128,256,25
+256,300,10,
+
+% Open end
+300,0,0,
+
+% Sub-mensur for valve
+$V1LOOP
+12,12,100
+12,0,0,

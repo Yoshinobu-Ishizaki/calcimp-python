@@ -88,6 +88,9 @@ static int parse_variable(char *line) {
     if (var_count < MAX_VARS) {
         strncpy(variables[var_count].name, name, sizeof(variables[var_count].name) - 1);
         variables[var_count].value = evaluate_expression(value_str);
+        if (getenv("DEBUG_XMENSUR")) {
+            fprintf(stderr, "XMENSUR VAR: %s = %s = %.6f\n", name, value_str, variables[var_count].value);
+        }
         var_count++;
         return 1;
     }
@@ -98,9 +101,35 @@ static int parse_variable(char *line) {
 /*
  * Evaluate simple arithmetic expression with variables
  * Supports: +, -, *, /, numbers, variables
+ * Uses a simple recursive descent parser with operator precedence
  */
+static double evaluate_term(char **p);
+static double evaluate_factor(char **p);
+
 static double evaluate_expression(char *expr) {
-    char *p = skip_whitespace(expr);
+    char *p = expr;
+    return evaluate_term(&p);
+}
+
+static double evaluate_term(char **pp) {
+    double result = evaluate_factor(pp);
+    char *p = skip_whitespace(*pp);
+
+    while (*p == '+' || *p == '-') {
+        char op = *p++;
+        *pp = p;
+        double right = evaluate_factor(pp);
+        if (op == '+') result += right;
+        else result -= right;
+        p = skip_whitespace(*pp);
+    }
+    *pp = p;
+    return result;
+}
+
+static double evaluate_factor(char **pp) {
+    double result;
+    char *p = skip_whitespace(*pp);
 
     /* Check if it's a variable */
     if (isalpha(*p) || *p == '_') {
@@ -112,16 +141,50 @@ static double evaluate_expression(char *expr) {
         varname[i] = '\0';
 
         /* Look up variable */
+        result = 0.0;
         for (i = 0; i < var_count; i++) {
             if (strcmp(variables[i].name, varname) == 0) {
-                return variables[i].value;
+                result = variables[i].value;
+                break;
             }
         }
-        return 0.0;  /* Variable not found */
+    } else {
+        /* Parse as number */
+        result = strtod(p, &p);
     }
 
-    /* Parse as number */
-    return atof(p);
+    /* Handle * and / */
+    p = skip_whitespace(p);
+    while (*p == '*' || *p == '/') {
+        char op = *p++;
+        p = skip_whitespace(p);
+        double right;
+        if (isalpha(*p) || *p == '_') {
+            char varname[64];
+            int i = 0;
+            while ((isalnum(*p) || *p == '_') && i < 63) {
+                varname[i++] = *p++;
+            }
+            varname[i] = '\0';
+            right = 0.0;
+            for (i = 0; i < var_count; i++) {
+                if (strcmp(variables[i].name, varname) == 0) {
+                    right = variables[i].value;
+                    break;
+                }
+            }
+        } else {
+            right = strtod(p, &p);
+        }
+
+        if (op == '*') result *= right;
+        else if (right != 0.0) result /= right;
+
+        p = skip_whitespace(p);
+    }
+
+    *pp = p;
+    return result;
 }
 
 /*
@@ -195,6 +258,10 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
         char *nl = strchr(p, '\n');
         if (nl) *nl = '\0';
 
+        if (getenv("DEBUG_XMENSUR_VERBOSE")) {
+            fprintf(stderr, "  [%s] Read: '%s'\n", group_name, p);
+        }
+
         /* Check for end markers */
         if (strcmp(p, "]") == 0 || strcmp(p, "END_MAIN") == 0 ||
             strcmp(p, "}") == 0 || strcmp(p, "END_GROUP") == 0) {
@@ -210,7 +277,14 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
 
         /* Check for special keywords */
         if (strcmp(p, "OPEN_END") == 0) {
+            if (getenv("DEBUG_XMENSUR_VERBOSE")) {
+                fprintf(stderr, "  [%s] Matched OPEN_END, cur=%p\n", group_name, (void*)cur);
+            }
             if (cur) {
+                if (getenv("DEBUG_XMENSUR")) {
+                    fprintf(stderr, "XMENSUR [%s]: df=%.4f, db=0.0000, r=0.0000, comment='OPEN_END'\n",
+                            group_name, cur->db);
+                }
                 cur = append_men(cur, cur->db, 0, 0, "");
             }
             continue;
@@ -218,6 +292,10 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
 
         if (strcmp(p, "CLOSED_END") == 0) {
             if (cur) {
+                if (getenv("DEBUG_XMENSUR")) {
+                    fprintf(stderr, "XMENSUR [%s]: df=0.0000, db=0.0000, r=0.0000, comment='CLOSED_END'\n",
+                            group_name);
+                }
                 cur = append_men(cur, 0, 0, 0, "");
             }
             continue;
@@ -229,8 +307,8 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
             strncmp(p, "SPLIT", 5) == 0) {
 
             char directive = *p;
-            if (strncmp(p, "BRANCH", 6) == 0) directive = '<';
-            else if (strncmp(p, "MERGE", 5) == 0) directive = '>';
+            if (strncmp(p, "BRANCH", 6) == 0) directive = '>';  /* BRANCH -> SPLIT */
+            else if (strncmp(p, "MERGE", 5) == 0) directive = '<';  /* MERGE -> JOIN */
             else if (strncmp(p, "SPLIT", 5) == 0) directive = '|';
 
             /* Skip directive character and comma */
@@ -266,10 +344,10 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
                 strncpy(marker->sidename, name, sizeof(marker->sidename) - 1);
                 marker->s_ratio = ratio;
 
-                if (directive == '<') {
-                    marker->s_type = SPLIT;  /* BRANCH start */
-                } else if (directive == '>') {
-                    marker->s_type = JOIN;   /* MERGE end */
+                if (directive == '>') {
+                    marker->s_type = SPLIT;  /* BRANCH start (>) */
+                } else if (directive == '<') {
+                    marker->s_type = JOIN;   /* MERGE end (<) */
                 } else if (directive == '|') {
                     marker->s_type = TONEHOLE;  /* SPLIT/tonehole */
                 }
@@ -310,6 +388,11 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
             df *= 0.001;
             db *= 0.001;
             r *= 0.001;
+
+            if (getenv("DEBUG_XMENSUR")) {
+                fprintf(stderr, "XMENSUR [%s]: df=%.4f, db=%.4f, r=%.4f, comment='%s'\n",
+                        group_name, df, db, r, comment);
+            }
 
             if (!head) {
                 head = create_men(df, db, r, comment);

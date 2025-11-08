@@ -137,6 +137,10 @@ mensur* append_men( mensur* inmen ,double df,double db,double r,char* comm)
     exit(-1);
   }
 
+  if (getenv("DEBUG_ZMENSUR")) {
+    fprintf(stderr, "ZMENSUR: df=%.4f, db=%.4f, r=%.4f, comment='%s'\n", df, db, r, comm);
+  }
+
   if( inmen != NULL ){
     /*  last = get_last_men( inmen ); */
     if( inmen->next != NULL ){
