@@ -75,14 +75,20 @@ static char* skip_whitespace(char *s) {
 
 /*
  * Utility: trim line - remove comments and whitespace
+ * Modifies line in-place and returns the original pointer
  */
 static char* trim_line(char *line) {
     /* Remove # comments */
     char *p = strchr(line, '#');
     if (p) *p = '\0';
 
-    /* Skip leading whitespace */
-    line = skip_whitespace(line);
+    /* Find start of non-whitespace content */
+    char *start = skip_whitespace(line);
+
+    /* If there's leading whitespace, move content to beginning */
+    if (start != line && *start != '\0') {
+        memmove(line, start, strlen(start) + 1);
+    }
 
     /* Remove trailing whitespace */
     p = line + strlen(line) - 1;
@@ -98,6 +104,21 @@ static char* trim_line(char *line) {
  * Evaluate arithmetic expression with variables using TinyExpr
  */
 static double evaluate_expression(char *expr) {
+    /* Skip leading whitespace/commas */
+    while (*expr && (isspace((unsigned char)*expr) || *expr == ',')) expr++;
+    if (*expr == '\0') return 0.0;  /* Empty expression */
+
+    /* Make a copy so we can safely trim trailing chars */
+    char *expr_copy = strdup(expr);
+    if (!expr_copy) return 0.0;
+
+    /* Trim trailing whitespace/commas */
+    char *end = expr_copy + strlen(expr_copy) - 1;
+    while (end >= expr_copy && (isspace((unsigned char)*end) || *end == ',')) {
+        *end = '\0';
+        end--;
+    }
+
     /* Build array of te_variable for TinyExpr */
     te_variable *te_vars = malloc(var_count * sizeof(te_variable));
     for (int i = 0; i < var_count; i++) {
@@ -109,17 +130,18 @@ static double evaluate_expression(char *expr) {
 
     /* Compile and evaluate expression */
     int err;
-    te_expr *compiled = te_compile(expr, te_vars, var_count, &err);
+    te_expr *compiled = te_compile(expr_copy, te_vars, var_count, &err);
     double result = 0.0;
 
     if (compiled) {
         result = te_eval(compiled);
         te_free(compiled);
     } else {
-        fprintf(stderr, "Error parsing expression '%s' at position %d\n", expr, err);
+        fprintf(stderr, "Error parsing expression '%s' at position %d\n", expr_copy, err);
     }
 
     free(te_vars);
+    free(expr_copy);
     return result;
 }
 
