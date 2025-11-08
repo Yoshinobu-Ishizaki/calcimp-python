@@ -105,7 +105,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip setuptools wheel build --break-system-packages
 
       # Build wheel packages
       - name: Build wheel (Ubuntu/macOS)
@@ -121,9 +121,7 @@ jobs:
         env:
           CEPHES_PATH: ../cephes_lib
         run: |
-          python -m pip install --upgrade --force-reinstall pip --break-system-packages
-          pip install build --break-system-packages
-          python -m build --wheel
+          python -m build --wheel --no-isolation
 
       # Upload wheels as artifacts for the release job
       - name: Upload wheel artifacts
