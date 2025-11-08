@@ -309,7 +309,21 @@ git push origin v0.1.0
 
 Original code by Yoshinobu Ishizaki (1999)
 
+## Acknowledgements
+
+This project incorporates the following third-party libraries:
+
+- **Cephes Mathematical Library** by Stephen L. Moshier
+  - Provides special mathematical functions (Bessel, Struve, Airy functions)
+  - Copyright (C) 1995 Stephen L. Moshier
+  - http://www.netlib.org/cephes/
+
+- **TinyExpr** by Lewis Van Winkle
+  - Lightweight expression parser for mathematical expressions in XMENSUR files
+  - Copyright (c) 2015-2020 Lewis Van Winkle
+  - https://github.com/codeplea/tinyexpr
+  - Licensed under the zlib license
+
 ## 参考文献 (References)
 
 - Fletcher & Rossing: "The Physics of Musical Instruments"
-- Cephes Mathematical Library: http://www.netlib.org/cephes/
