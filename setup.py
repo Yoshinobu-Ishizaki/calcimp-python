@@ -1,8 +1,11 @@
 from setuptools import setup, Extension
+from setuptools.command.build_ext import build_ext
 import numpy as np
 import os
 import subprocess
 import platform
+import shutil
+import sys
 
 def pkg_config(*packages, **kw):
     """Get compiler and linker flags from pkg-config."""
@@ -25,9 +28,137 @@ def pkg_config(*packages, **kw):
                 kw.setdefault('extra_compile_args', []).append(token)
     return kw
 
+class CustomBuildExt(build_ext):
+    """Custom build_ext command that downloads and builds cephes-lib if needed."""
+
+    def run(self):
+        """Override run to build cephes-lib before building extensions."""
+        # Build cephes-lib if needed
+        self.build_cephes_lib()
+
+        # Continue with normal extension build
+        build_ext.run(self)
+
+    def build_cephes_lib(self):
+        """Download and build cephes-lib if not already available."""
+        # Determine cephes path
+        cephes_path = os.environ.get('CEPHES_PATH')
+
+        if cephes_path is None:
+            # First, try ../cephes-lib (for local development)
+            parent_cephes = os.path.abspath('../cephes-lib')
+            if os.path.exists(parent_cephes):
+                cephes_path = parent_cephes
+            else:
+                # Try ../cephes_lib (underscore)
+                parent_cephes_underscore = os.path.abspath('../cephes_lib')
+                if os.path.exists(parent_cephes_underscore):
+                    cephes_path = parent_cephes_underscore
+                else:
+                    # Use local directory for pip install from git
+                    # This will be in the source directory during build
+                    cephes_path = os.path.abspath('.cephes-lib')
+        else:
+            cephes_path = os.path.abspath(cephes_path)
+
+        cephes_lib = os.path.join(cephes_path, 'libmd.a')
+
+        # Check if library already exists
+        if os.path.exists(cephes_lib):
+            print(f"Found existing Cephes library at {cephes_lib}")
+            return
+
+        print(f"Cephes library not found at {cephes_lib}")
+        print("Downloading and building cephes-lib...")
+
+        # Clone the repository if directory doesn't exist
+        if not os.path.exists(cephes_path):
+            parent_dir = os.path.dirname(cephes_path)
+            if not os.path.exists(parent_dir):
+                os.makedirs(parent_dir)
+
+            print(f"Cloning cephes-lib to {cephes_path}...")
+            try:
+                subprocess.check_call([
+                    'git', 'clone',
+                    'https://github.com/Yoshinobu-Ishizaki/cephes-lib.git',
+                    cephes_path
+                ])
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(
+                    f"Failed to clone cephes-lib repository: {e}\n"
+                    "Please ensure git is installed and you have internet access."
+                ) from e
+
+        # Build the library
+        print(f"Building cephes-lib in {cephes_path}...")
+        try:
+            # Run autoreconf if configure doesn't exist
+            configure_path = os.path.join(cephes_path, 'configure')
+            if not os.path.exists(configure_path):
+                print("Running autoreconf to generate configure script...")
+                subprocess.check_call(
+                    ['autoreconf', '-i'],
+                    cwd=cephes_path
+                )
+
+            # Run configure if Makefile doesn't exist
+            makefile_path = os.path.join(cephes_path, 'Makefile')
+            if not os.path.exists(makefile_path):
+                print("Running configure...")
+                subprocess.check_call(
+                    ['./configure'],
+                    cwd=cephes_path
+                )
+
+            # Build the library
+            print("Running make...")
+            subprocess.check_call(
+                ['make'],
+                cwd=cephes_path
+            )
+
+            # Verify the library was built
+            if not os.path.exists(cephes_lib):
+                raise RuntimeError(
+                    f"Build succeeded but library not found at {cephes_lib}"
+                )
+
+            print(f"Successfully built Cephes library at {cephes_lib}")
+
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(
+                f"Failed to build cephes-lib: {e}\n"
+                "Please check build logs for details."
+            ) from e
+        except FileNotFoundError as e:
+            raise RuntimeError(
+                f"Build tool not found: {e}\n"
+                "Please ensure autotools and make are installed:\n"
+                "  Ubuntu/Debian: sudo apt-get install autoconf automake libtool make\n"
+                "  macOS: brew install autoconf automake libtool"
+            ) from e
+
 def get_cephes_config():
     """Get Cephes library path and configuration."""
-    cephes_path = os.environ.get('CEPHES_PATH', '../cephes_lib')
+    cephes_path = os.environ.get('CEPHES_PATH')
+
+    if cephes_path is None:
+        # First, try ../cephes-lib (for local development)
+        parent_cephes = os.path.abspath('../cephes-lib')
+        if os.path.exists(parent_cephes):
+            cephes_path = parent_cephes
+        else:
+            # Try ../cephes_lib (underscore)
+            parent_cephes_underscore = os.path.abspath('../cephes_lib')
+            if os.path.exists(parent_cephes_underscore):
+                cephes_path = parent_cephes_underscore
+            else:
+                # Use local directory for pip install from git
+                cephes_path = os.path.abspath('.cephes-lib')
+    else:
+        cephes_path = os.path.abspath(cephes_path)
+
     cephes_lib = os.path.join(cephes_path, 'libmd.a')
 
     # Convert to absolute path for reliable linking
@@ -37,7 +168,7 @@ def get_cephes_config():
     if not os.path.exists(cephes_lib):
         raise RuntimeError(
             f"Cephes library not found at {cephes_lib}\n"
-            f"Please set CEPHES_PATH environment variable or ensure libmd.a exists at ../cephes_lib/"
+            f"This should have been built automatically. Please check build logs."
         )
 
     print(f"Using Cephes library: {cephes_lib}")
@@ -88,6 +219,7 @@ setup(name='calcimp',
       version='0.2.0',
       description='Calculate input impedance of tubes',
       ext_modules=[module],
+      cmdclass={'build_ext': CustomBuildExt},
       python_requires='>=3.6',
       install_requires=['numpy']
       )

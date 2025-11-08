@@ -31,47 +31,69 @@ pacman -S mingw-w64-x86_64-glib2 mingw-w64-x86_64-gsl
 
 ### External Library
 - **Cephes Math Library** (`libmd.a`) - Required for Bessel and Struve functions
-  - Must be built separately and placed in `../cephes_lib/` or custom path
-  - Download from:
-    - Original: http://www.netlib.org/cephes/
-    - GitHub: https://github.com/jeremybarnes/cephes
-    - GitHub (with build scripts): https://github.com/Yoshinobu-Ishizaki/cephes-lib
+  - **Automatically downloaded and built during installation** when installing from git
+  - For manual builds, can be placed in `../cephes_lib/` or custom path via `CEPHES_PATH`
+  - Repository: https://github.com/Yoshinobu-Ishizaki/cephes-lib
 
 ## ビルド方法 (Build Instructions)
 
-### ⚠️ Important: CEPHES_PATH Environment Variable
+### Build Dependencies
 
-**Before building, you MUST set the `CEPHES_PATH` environment variable** to point to your Cephes library directory containing `libmd.a`:
+When building from source (not needed for pre-built wheels), you'll need:
 
 ```bash
-# Set CEPHES_PATH to your Cephes library location
+# Ubuntu/Debian - build tools for cephes-lib
+sudo apt-get install git autoconf automake libtool make gcc
+
+# macOS
+brew install autoconf automake libtool
+```
+
+The Cephes library will be **automatically downloaded and built** during installation. No manual setup required!
+
+### Optional: CEPHES_PATH Environment Variable
+
+If you already have Cephes library built elsewhere, you can point to it:
+
+```bash
+# Set CEPHES_PATH to your existing Cephes library location
 export CEPHES_PATH=/path/to/your/cephes_lib
 
 # Then build
 uv run python setup.py build
 ```
-Or use inline environment variable.
 
-```bash
-CEPHES_PATH=/path/to/cephes_lib uv run python setup.py build
-```
-
-### Expected Directory Structure
-```
-your-workspace/
-├── calcimp-python/          # This project
-│   ├── src/
-│   ├── setup.py
-│   └── ...
-└── cephes_lib/              # Cephes library (if using default path)
-    ├── libmd.a             # Required: Cephes static library
-    ├── mconf.h             # Required: Configuration header
-    └── ...
-```
+The build process will search for cephes-lib in this order:
+1. `CEPHES_PATH` environment variable (if set)
+2. `../cephes-lib` (for local development)
+3. `../cephes_lib` (alternative naming)
+4. `.cephes-lib` (auto-downloaded during pip install)
 
 ## インストール方法 (Installation)
 
-### Option 1: Install Pre-built Wheel from GitHub Releases (Easiest)
+### Option 1: Install Directly from Git (Easiest - Auto-builds)
+
+Install directly from GitHub repository. This will automatically download and build all dependencies including cephes-lib:
+
+```bash
+# Install from main branch
+pip install git+https://github.com/Yoshinobu-Ishizaki/calcimp-python.git
+
+# Or using uv
+uv pip install git+https://github.com/Yoshinobu-Ishizaki/calcimp-python.git
+
+# Install specific branch or tag
+pip install git+https://github.com/Yoshinobu-Ishizaki/calcimp-python.git@dev
+pip install git+https://github.com/Yoshinobu-Ishizaki/calcimp-python.git@v0.2.0
+```
+
+**Prerequisites:**
+- System dependencies (glib2, gsl) must be installed (see System Dependencies section)
+- Build tools (git, autoconf, automake, libtool, make, gcc) - see Build Dependencies section
+
+The cephes-lib will be automatically cloned and built during installation!
+
+### Option 2: Install Pre-built Wheel from GitHub Releases
 
 Pre-built wheel packages are available for Ubuntu, macOS, and Windows from GitHub Releases:
 
@@ -114,18 +136,23 @@ pip install calcimp_python-*.whl
 
 **Note for Development Builds:** GitHub Actions artifacts from recent commits are also available but expire after 90 days. See the Actions tab for development builds.
 
-### Option 2: Build from Source
+### Option 3: Build from Source (Local Development)
 
-### Development Mode (Recommended)
+For local development, clone the repository and build:
+
 ```bash
-# After building
+# Clone the repository
+git clone https://github.com/Yoshinobu-Ishizaki/calcimp-python.git
+cd calcimp-python
+
+# Build and install in development mode (recommended)
+pip install -e .
+
+# Or using uv
 uv pip install -e .
 ```
 
-### Regular Installation
-```bash
-uv run python setup.py install
-```
+The build process will automatically handle cephes-lib download and compilation if needed.
 
 ## 使用例 (Usage Example)
 
