@@ -1,12 +1,10 @@
 """
-Python wrapper for calcimp that adds XMENSUR support.
+Python wrapper for calcimp.
 
 This module provides a high-level interface to the calcimp C extension
 that automatically handles both ZMENSUR (.men) and XMENSUR (.xmen) file formats.
 """
 
-import os
-import tempfile
 from . import _calcimp_c
 
 
@@ -52,32 +50,3 @@ def calcimp(filename, max_freq=2000.0, step_freq=2.5, num_freq=0, temperature=24
 NONE = _calcimp_c.NONE
 PIPE = _calcimp_c.PIPE
 BUFFLE = _calcimp_c.BUFFLE
-
-
-# Provide access to the xmensur module if needed
-def convert_xmensur(xmen_path, zmen_path=None):
-    """Convert an XMENSUR file to ZMENSUR format.
-
-    This is a convenience function that exposes the xmensur converter directly.
-
-    Args:
-        xmen_path (str): Path to input .xmen file
-        zmen_path (str, optional): Path to output .men file
-                                   (defaults to same name with .men extension)
-
-    Returns:
-        str: Path to the generated zmensur file
-
-    Example:
-        >>> import calcimp
-        >>> output_path = calcimp.convert_xmensur("instrument.xmen", "instrument.men")
-    """
-    try:
-        from . import xmensur
-    except ImportError:
-        raise ImportError(
-            "XMENSUR support requires the xmensur module. "
-            "Please ensure xmensur.py is properly installed."
-        )
-
-    return xmensur.xmensur_to_zmensur_file(xmen_path, zmen_path)

@@ -12,9 +12,6 @@ Constants:
     PIPE   - Pipe radiation impedance (default)
     BUFFLE - Infinite baffle radiation impedance
 
-Utility functions:
-    convert_xmensur(xmen_path, zmen_path) - Convert XMENSUR to ZMENSUR format
-
 Example:
     >>> import calcimp
     >>> freq, real, imag, mag_db = calcimp.calcimp("sample.men")
@@ -26,7 +23,7 @@ Example:
 from . import _calcimp_c
 
 # Import the Python wrapper
-from .calcimp_wrapper import calcimp, convert_xmensur
+from .calcimp_wrapper import calcimp
 
 # Re-export constants
 NONE = _calcimp_c.NONE
@@ -36,7 +33,6 @@ BUFFLE = _calcimp_c.BUFFLE
 # Define public API
 __all__ = [
     'calcimp',
-    'convert_xmensur',
     'NONE',
     'PIPE',
     'BUFFLE',
