@@ -16,7 +16,6 @@
 
 #define MAX_VARS 256
 #define MAX_GROUPS 256
-#define MAX_LINES 10000
 
 /* Variable storage */
 typedef struct {
@@ -104,6 +103,7 @@ static char** read_xmensur_text(const char* path) {
     char *readbuffer;
     char **lines;
     int line_count = 0;
+    int line_capacity = 1000;  /* Initial capacity */
 
     /* Read entire file */
     if (stat(path, &fstatus) != 0) {
@@ -130,17 +130,32 @@ static char** read_xmensur_text(const char* path) {
 
     eol_to_lf(readbuffer);
 
-    /* Allocate lines array */
-    lines = (char**)malloc(MAX_LINES * sizeof(char*));
-    for (int i = 0; i < MAX_LINES; i++) {
-        lines[i] = NULL;
+    /* Allocate initial lines array */
+    lines = (char**)malloc(line_capacity * sizeof(char*));
+    if (!lines) {
+        fprintf(stderr, "Cannot allocate memory for lines\n");
+        free(readbuffer);
+        return NULL;
     }
 
     /* Split into lines, trim, and skip blank/comment lines */
     char *line = strtok(readbuffer, "\n");
-    while (line != NULL && line_count < MAX_LINES - 1) {
+    while (line != NULL) {
         char *trimmed = trim_line(strdup(line));
         if (strlen(trimmed) > 0) {
+            /* Expand array if needed */
+            if (line_count >= line_capacity - 1) {
+                line_capacity *= 2;
+                char **new_lines = (char**)realloc(lines, line_capacity * sizeof(char*));
+                if (!new_lines) {
+                    fprintf(stderr, "Cannot reallocate memory for lines\n");
+                    for (int i = 0; i < line_count; i++) free(lines[i]);
+                    free(lines);
+                    free(readbuffer);
+                    return NULL;
+                }
+                lines = new_lines;
+            }
             lines[line_count++] = trimmed;
         } else {
             free(trimmed);
@@ -158,8 +173,14 @@ static char** read_xmensur_text(const char* path) {
  * Variable line format: "name = expression"
  */
 static char** split_var_defs(char** lines) {
-    char **vardefs = (char**)malloc(MAX_LINES * sizeof(char*));
+    int capacity = 100;
+    char **vardefs = (char**)malloc(capacity * sizeof(char*));
     int var_idx = 0;
+
+    if (!vardefs) {
+        fprintf(stderr, "Cannot allocate memory for vardefs\n");
+        return NULL;
+    }
 
     for (int i = 0; lines[i] != NULL; i++) {
         /* Check if line contains '=' and is not a marker */
@@ -167,6 +188,19 @@ static char** split_var_defs(char** lines) {
             strncmp(lines[i], "MAIN", 4) != 0 &&
             strncmp(lines[i], "GROUP", 5) != 0 &&
             lines[i][0] != '[' && lines[i][0] != '{') {
+
+            /* Expand array if needed */
+            if (var_idx >= capacity - 1) {
+                capacity *= 2;
+                char **new_vardefs = (char**)realloc(vardefs, capacity * sizeof(char*));
+                if (!new_vardefs) {
+                    fprintf(stderr, "Cannot reallocate memory for vardefs\n");
+                    for (int j = 0; j < var_idx; j++) free(vardefs[j]);
+                    free(vardefs);
+                    return NULL;
+                }
+                vardefs = new_vardefs;
+            }
             vardefs[var_idx++] = strdup(lines[i]);
         }
     }
@@ -177,11 +211,13 @@ static char** split_var_defs(char** lines) {
 
 /*
  * Step 3: Read variable definitions
+ * Note: No whitespace handling needed - already trimmed by read_xmensur_text
+ * Returns NULL if variable count exceeds MAX_VARS
  */
 static xmen_var* read_xmen_variables(char** vardefs) {
     var_count = 0;
 
-    for (int i = 0; vardefs[i] != NULL && var_count < MAX_VARS; i++) {
+    for (int i = 0; vardefs[i] != NULL; i++) {
         char *line = strdup(vardefs[i]);
         char *eq = strchr(line, '=');
         if (!eq) {
@@ -190,14 +226,20 @@ static xmen_var* read_xmen_variables(char** vardefs) {
         }
 
         *eq = '\0';
-        char *name = skip_whitespace(line);
-        char *value_str = skip_whitespace(eq + 1);
+        char *name = line;
+        char *value_str = eq + 1;
 
-        /* Remove trailing whitespace from name */
-        char *end = name + strlen(name) - 1;
-        while (end > name && isspace((unsigned char)*end)) *end-- = '\0';
+        /* Only need to trim internal spaces around = sign */
+        while (*name && name[strlen(name)-1] == ' ') name[strlen(name)-1] = '\0';
+        while (*value_str == ' ') value_str++;
 
         if (strlen(name) > 0) {
+            if (var_count >= MAX_VARS) {
+                fprintf(stderr, "Error: Number of variables (%d) exceeds maximum limit (%d)\n",
+                        var_count + 1, MAX_VARS);
+                free(line);
+                return NULL;
+            }
             strncpy(variables[var_count].name, name, 63);
             variables[var_count].name[63] = '\0';
             variables[var_count].value = evaluate_expression(value_str);
@@ -214,8 +256,14 @@ static xmen_var* read_xmen_variables(char** vardefs) {
  * Step 4: Split mensur definition lines (non-variable lines)
  */
 static char** split_men_defs(char** lines) {
-    char **mendefs = (char**)malloc(MAX_LINES * sizeof(char*));
+    int capacity = 1000;
+    char **mendefs = (char**)malloc(capacity * sizeof(char*));
     int men_idx = 0;
+
+    if (!mendefs) {
+        fprintf(stderr, "Cannot allocate memory for mendefs\n");
+        return NULL;
+    }
 
     for (int i = 0; lines[i] != NULL; i++) {
         /* Skip variable definitions */
@@ -225,6 +273,19 @@ static char** split_men_defs(char** lines) {
             lines[i][0] != '[' && lines[i][0] != '{') {
             continue;
         }
+
+        /* Expand array if needed */
+        if (men_idx >= capacity - 1) {
+            capacity *= 2;
+            char **new_mendefs = (char**)realloc(mendefs, capacity * sizeof(char*));
+            if (!new_mendefs) {
+                fprintf(stderr, "Cannot reallocate memory for mendefs\n");
+                for (int j = 0; j < men_idx; j++) free(mendefs[j]);
+                free(mendefs);
+                return NULL;
+            }
+            mendefs = new_mendefs;
+        }
         mendefs[men_idx++] = strdup(lines[i]);
     }
     mendefs[men_idx] = NULL;
@@ -233,12 +294,12 @@ static char** split_men_defs(char** lines) {
 }
 
 /* Forward declaration */
-static mensur* parse_group_recursive(char** lines, int *idx, const char *group_name);
+static mensur* parse_group_recursive(char** lines, int *idx, const char *group_name, int *error);
 
 /*
  * Parse df,db,r line
  */
-static int parse_dfdbr(char *line, double *df, double *db, double *r, char *comment) {
+static int parse_xmen_cell(char *line, double *df, double *db, double *r, char *comment) {
     char *tokens[4];
     int token_count = 0;
 
@@ -248,13 +309,13 @@ static int parse_dfdbr(char *line, double *df, double *db, double *r, char *comm
     while (*p && token_count < 4) {
         if (*p == ',') {
             *p = '\0';
-            tokens[token_count++] = skip_whitespace(start);
+            tokens[token_count++] = start;
             start = p + 1;
         }
         p++;
     }
     if (token_count < 4 && *start) {
-        tokens[token_count++] = skip_whitespace(start);
+        tokens[token_count++] = start;
     }
 
     if (token_count < 3) return 0;
@@ -265,7 +326,7 @@ static int parse_dfdbr(char *line, double *df, double *db, double *r, char *comm
 
     if (comment) {
         if (token_count > 3 && tokens[3]) {
-            strncpy(comment, skip_whitespace(tokens[3]), 63);
+            strncpy(comment, tokens[3], 63);
             comment[63] = '\0';
         } else {
             comment[0] = '\0';
@@ -278,17 +339,38 @@ static int parse_dfdbr(char *line, double *df, double *db, double *r, char *comm
 /*
  * Step 5: Read all groups including MAIN recursively
  * Parse GROUP/END_GROUP pairs, handle nesting
+ * Returns NULL on error, sets *error to 1
  */
-static mensur* parse_group_recursive(char** lines, int *idx, const char *group_name) {
+static mensur* parse_group_recursive(char** lines, int *idx, const char *group_name, int *error) {
     mensur *head = NULL, *cur = NULL;
     int depth = 1;  /* We're inside a group */
+    int is_main = (strcmp(group_name, "MAIN") == 0);
 
     while (lines[*idx] != NULL) {
         char *line = strdup(lines[*idx]);
         (*idx)++;
 
-        /* Handle END_GROUP or } */
-        if (strcmp(line, "END_GROUP") == 0 || strcmp(line, "}") == 0 || strcmp(line, "]") == 0 || strcmp(line, "END_MAIN") == 0) {
+        /* Handle END_GROUP or } or END_MAIN or ] */
+        if (strcmp(line, "END_GROUP") == 0 || strcmp(line, "}") == 0 ||
+            strcmp(line, "]") == 0 || strcmp(line, "END_MAIN") == 0) {
+
+            /* Check for mismatched closing markers */
+            int is_end_main = (strcmp(line, "END_MAIN") == 0 || strcmp(line, "]") == 0);
+            int is_end_group = (strcmp(line, "END_GROUP") == 0 || strcmp(line, "}") == 0);
+
+            if (is_main && is_end_group && depth == 1) {
+                fprintf(stderr, "Error: Found END_GROUP/} but expected END_MAIN/] for MAIN block\n");
+                free(line);
+                *error = 1;
+                return NULL;
+            }
+            if (!is_main && is_end_main && depth == 1) {
+                fprintf(stderr, "Error: Found END_MAIN/] but expected END_GROUP/} for GROUP '%s'\n", group_name);
+                free(line);
+                *error = 1;
+                return NULL;
+            }
+
             depth--;
             if (depth == 0) {
                 /* Add terminator if not present */
@@ -298,6 +380,13 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
                 free(line);
                 break;
             }
+            free(line);
+            continue;
+        }
+
+        /* Handle nested MAIN or [ */
+        if (strcmp(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
+            depth++;
             free(line);
             continue;
         }
@@ -332,7 +421,6 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
             if (cur) {
                 char *p = (line[0] == '>') ? line + 1 : line + 6;
                 if (*p == ',') p++;
-                p = skip_whitespace(p);
 
                 /* Extract group name */
                 char *comma = strchr(p, ',');
@@ -342,7 +430,7 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
                     cur->sidename[15] = '\0';
 
                     /* Extract ratio */
-                    char *ratio_str = skip_whitespace(comma + 1);
+                    char *ratio_str = comma + 1;
                     cur->s_ratio = evaluate_expression(ratio_str);
                     cur->s_type = SPLIT;  /* BRANCH uses SPLIT type */
                 }
@@ -356,7 +444,6 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
             if (cur) {
                 char *p = (line[0] == '<') ? line + 1 : line + 5;
                 if (*p == ',') p++;
-                p = skip_whitespace(p);
 
                 /* Extract group name */
                 char *comma = strchr(p, ',');
@@ -366,7 +453,7 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
                     cur->sidename[15] = '\0';
 
                     /* Extract ratio */
-                    char *ratio_str = skip_whitespace(comma + 1);
+                    char *ratio_str = comma + 1;
                     cur->s_ratio = evaluate_expression(ratio_str);
                     cur->s_type = JOIN;  /* MERGE uses JOIN type */
                 }
@@ -380,7 +467,6 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
             if (cur) {
                 char *p = (line[0] == '|') ? line + 1 : line + 5;
                 if (*p == ',') p++;
-                p = skip_whitespace(p);
 
                 /* Extract group name */
                 char *comma = strchr(p, ',');
@@ -390,7 +476,7 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
                     cur->sidename[15] = '\0';
 
                     /* Extract ratio */
-                    char *ratio_str = skip_whitespace(comma + 1);
+                    char *ratio_str = comma + 1;
                     cur->s_ratio = evaluate_expression(ratio_str);
                     cur->s_type = ADDON;  /* SPLIT uses ADDON type */
                 }
@@ -402,7 +488,7 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
         /* Try to parse as df,db,r line */
         double df, db, r;
         char comment[64];
-        if (parse_dfdbr(line, &df, &db, &r, comment)) {
+        if (parse_xmen_cell(line, &df, &db, &r, comment)) {
             /* Convert mm to m */
             df *= 0.001;
             db *= 0.001;
@@ -419,24 +505,45 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
         free(line);
     }
 
+    /* Check if we exited the loop without finding the closing marker */
+    if (depth > 0) {
+        if (is_main) {
+            fprintf(stderr, "Error: Missing END_MAIN/] for MAIN block\n");
+        } else {
+            fprintf(stderr, "Error: Missing END_GROUP/} for GROUP '%s'\n", group_name);
+        }
+        *error = 1;
+        return NULL;
+    }
+
     return head;
 }
 
 /*
  * Read all groups and MAIN from mensur definition lines
+ * Returns NULL on error
  */
 static xmen_group* read_xmen_groups(char** mendefs) {
     group_count = 0;
     int idx = 0;
+    int error = 0;
 
     while (mendefs[idx] != NULL) {
         char *line = mendefs[idx];
 
         /* Check for MAIN or [ */
         if (strcmp(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
+            if (group_count >= MAX_GROUPS) {
+                fprintf(stderr, "Error: Number of groups (%d) exceeds maximum limit (%d)\n",
+                        group_count + 1, MAX_GROUPS);
+                return NULL;
+            }
             idx++;
-            mensur *main_men = parse_group_recursive(mendefs, &idx, "MAIN");
-            if (main_men && group_count < MAX_GROUPS) {
+            mensur *main_men = parse_group_recursive(mendefs, &idx, "MAIN", &error);
+            if (error) {
+                return NULL;
+            }
+            if (main_men) {
                 strcpy(groups[group_count].name, "MAIN");
                 groups[group_count].men = main_men;
                 group_count++;
@@ -446,17 +553,21 @@ static xmen_group* read_xmen_groups(char** mendefs) {
 
         /* Check for GROUP or { */
         if (strncmp(line, "GROUP", 5) == 0 || strncmp(line, "{", 1) == 0) {
+            if (group_count >= MAX_GROUPS) {
+                fprintf(stderr, "Error: Number of groups (%d) exceeds maximum limit (%d)\n",
+                        group_count + 1, MAX_GROUPS);
+                return NULL;
+            }
+
             /* Extract group name */
             char group_name[256] = "";
             if (line[0] == '{') {
                 char *p = line + 1;
                 if (*p == ',') p++;
-                p = skip_whitespace(p);
                 strncpy(group_name, p, 255);
             } else {
                 char *p = line + 5;  /* Skip "GROUP" */
                 if (*p == ',') p++;
-                p = skip_whitespace(p);
                 strncpy(group_name, p, 255);
             }
 
@@ -468,8 +579,11 @@ static xmen_group* read_xmen_groups(char** mendefs) {
             }
 
             idx++;
-            mensur *group_men = parse_group_recursive(mendefs, &idx, group_name);
-            if (group_men && group_count < MAX_GROUPS && strlen(group_name) > 0) {
+            mensur *group_men = parse_group_recursive(mendefs, &idx, group_name, &error);
+            if (error) {
+                return NULL;
+            }
+            if (group_men && strlen(group_name) > 0) {
                 strncpy(groups[group_count].name, group_name, 255);
                 groups[group_count].name[255] = '\0';
                 groups[group_count].men = group_men;
@@ -508,15 +622,6 @@ static mensur* find_xmen(const char* name) {
     return NULL;
 }
 
-/*
- * Step 7: Build XMEN - resolve INSERT, SPLIT, BRANCH, MERGE
- * This is a placeholder - full implementation needed based on requirements
- */
-static mensur* build_xmen(mensur* men) {
-    /* For now, just return the mensur as-is */
-    /* TODO: Implement INSERT, SPLIT, BRANCH, MERGE resolution */
-    return men;
-}
 
 /*
  * Resolve child mensur connections
@@ -609,21 +714,45 @@ mensur* read_xmensur(const char* path) {
 
     /* Step 2 & 3: Read variable definition lines */
     char** vardefs = split_var_defs(lines);
-    read_xmen_variables(vardefs);
-
-    /* Step 4 & 5: Read mensur definitions and create groups */
-    char** mendefs = split_men_defs(lines);
-    read_xmen_groups(mendefs);
-
-    /* Step 6: Get pointer to head mensur of MAIN */
-    mensur* mainmen = get_main_xmen(groups);
-    if (!mainmen) {
-        fprintf(stderr, "Error: No MAIN definition found in XMENSUR file\n");
+    xmen_var* parsed_vars = read_xmen_variables(vardefs);
+    if (!parsed_vars) {
+        fprintf(stderr, "Error: Failed to parse variables (exceeded limit)\n");
+        /* Cleanup */
+        for (int i = 0; lines[i] != NULL; i++) free(lines[i]);
+        free(lines);
+        for (int i = 0; vardefs[i] != NULL; i++) free(vardefs[i]);
+        free(vardefs);
         return NULL;
     }
 
-    /* Step 7: Resolve INSERT, SPLIT, BRANCH, MERGE of groups */
-    mainmen = build_xmen(mainmen);
+    /* Step 4 & 5: Read mensur definitions and create groups */
+    char** mendefs = split_men_defs(lines);
+    xmen_group* parsed_groups = read_xmen_groups(mendefs);
+    if (!parsed_groups) {
+        fprintf(stderr, "Error: Failed to parse XMENSUR groups\n");
+        /* Cleanup */
+        for (int i = 0; lines[i] != NULL; i++) free(lines[i]);
+        free(lines);
+        for (int i = 0; vardefs[i] != NULL; i++) free(vardefs[i]);
+        free(vardefs);
+        for (int i = 0; mendefs[i] != NULL; i++) free(mendefs[i]);
+        free(mendefs);
+        return NULL;
+    }
+
+    /* Step 6: Get pointer to head mensur of MAIN */
+    mensur* mainmen = get_main_xmen(parsed_groups);
+    if (!mainmen) {
+        fprintf(stderr, "Error: No MAIN definition found in XMENSUR file\n");
+        /* Cleanup */
+        for (int i = 0; lines[i] != NULL; i++) free(lines[i]);
+        free(lines);
+        for (int i = 0; vardefs[i] != NULL; i++) free(vardefs[i]);
+        free(vardefs);
+        for (int i = 0; mendefs[i] != NULL; i++) free(mendefs[i]);
+        free(mendefs);
+        return NULL;
+    }
 
     /* Step 8: Resolve child connections */
     resolve_xmen_child(mainmen);
