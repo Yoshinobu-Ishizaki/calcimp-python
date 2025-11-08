@@ -36,6 +36,36 @@ static xmen_group groups[MAX_GROUPS];
 static int group_count = 0;
 
 /*
+ * Utility: case-insensitive string comparison
+ */
+static int strcasecmp_xmen(const char *s1, const char *s2) {
+    while (*s1 && *s2) {
+        char c1 = tolower((unsigned char)*s1);
+        char c2 = tolower((unsigned char)*s2);
+        if (c1 != c2) return c1 - c2;
+        s1++;
+        s2++;
+    }
+    return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
+}
+
+/*
+ * Utility: case-insensitive string comparison with length limit
+ */
+static int strncasecmp_xmen(const char *s1, const char *s2, size_t n) {
+    while (n > 0 && *s1 && *s2) {
+        char c1 = tolower((unsigned char)*s1);
+        char c2 = tolower((unsigned char)*s2);
+        if (c1 != c2) return c1 - c2;
+        s1++;
+        s2++;
+        n--;
+    }
+    if (n == 0) return 0;
+    return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
+}
+
+/*
  * Utility: skip whitespace
  */
 static char* skip_whitespace(char *s) {
@@ -391,19 +421,19 @@ static int parse_xmen_cell(char *line, double *df, double *db, double *r, char *
 static mensur* parse_group_recursive(char** lines, int *idx, const char *group_name, int *error) {
     mensur *head = NULL, *cur = NULL;
     int depth = 1;  /* We're inside a group */
-    int is_main = (strcmp(group_name, "MAIN") == 0);
+    int is_main = (strcasecmp_xmen(group_name, "MAIN") == 0);
 
     while (lines[*idx] != NULL) {
         char *line = strdup(lines[*idx]);
         (*idx)++;
 
         /* Handle END_GROUP or } or END_MAIN or ] */
-        if (strcmp(line, "END_GROUP") == 0 || strcmp(line, "}") == 0 ||
-            strcmp(line, "]") == 0 || strcmp(line, "END_MAIN") == 0) {
+        if (strcasecmp_xmen(line, "END_GROUP") == 0 || strcmp(line, "}") == 0 ||
+            strcmp(line, "]") == 0 || strcasecmp_xmen(line, "END_MAIN") == 0) {
 
             /* Check for mismatched closing markers */
-            int is_end_main = (strcmp(line, "END_MAIN") == 0 || strcmp(line, "]") == 0);
-            int is_end_group = (strcmp(line, "END_GROUP") == 0 || strcmp(line, "}") == 0);
+            int is_end_main = (strcasecmp_xmen(line, "END_MAIN") == 0 || strcmp(line, "]") == 0);
+            int is_end_group = (strcasecmp_xmen(line, "END_GROUP") == 0 || strcmp(line, "}") == 0);
 
             if (is_main && is_end_group && depth == 1) {
                 fprintf(stderr, "Error: Found END_GROUP/} but expected END_MAIN/] for MAIN block\n");
@@ -432,21 +462,21 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
         }
 
         /* Handle nested MAIN or [ */
-        if (strcmp(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
+        if (strcasecmp_xmen(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
             depth++;
             free(line);
             continue;
         }
 
         /* Handle nested GROUP or { */
-        if (strncmp(line, "GROUP", 5) == 0 || strncmp(line, "{", 1) == 0) {
+        if (strncasecmp_xmen(line, "GROUP", 5) == 0 || strncmp(line, "{", 1) == 0) {
             depth++;
             free(line);
             continue;
         }
 
         /* Handle OPEN_END */
-        if (strcmp(line, "OPEN_END") == 0) {
+        if (strcasecmp_xmen(line, "OPEN_END") == 0) {
             if (cur) {
                 cur = append_men(cur, cur->db, 0, 0, "");
             }
@@ -455,7 +485,7 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
         }
 
         /* Handle CLOSED_END */
-        if (strcmp(line, "CLOSED_END") == 0) {
+        if (strcasecmp_xmen(line, "CLOSED_END") == 0) {
             if (cur) {
                 cur = append_men(cur, 0, 0, 0, "");
             }
@@ -464,7 +494,7 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
         }
 
         /* Handle BRANCH marker: BRANCH, groupname, ratio */
-        if (strncmp(line, "BRANCH", 6) == 0 || line[0] == '>') {
+        if (strncasecmp_xmen(line, "BRANCH", 6) == 0 || line[0] == '>') {
             if (cur) {
                 char *p = (line[0] == '>') ? line + 1 : line + 6;
                 if (*p == ',') p++;
@@ -487,7 +517,7 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
         }
 
         /* Handle MERGE marker: MERGE, groupname, ratio */
-        if (strncmp(line, "MERGE", 5) == 0 || line[0] == '<') {
+        if (strncasecmp_xmen(line, "MERGE", 5) == 0 || line[0] == '<') {
             if (cur) {
                 char *p = (line[0] == '<') ? line + 1 : line + 5;
                 if (*p == ',') p++;
@@ -510,7 +540,7 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
         }
 
         /* Handle SPLIT marker: SPLIT, groupname, ratio or |,groupname,ratio */
-        if (strncmp(line, "SPLIT", 5) == 0 || line[0] == '|') {
+        if (strncasecmp_xmen(line, "SPLIT", 5) == 0 || line[0] == '|') {
             if (cur) {
                 char *p = (line[0] == '|') ? line + 1 : line + 5;
                 if (*p == ',') p++;
@@ -576,11 +606,11 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
 }
 
 /*
- * Check if a group name already exists
+ * Check if a group name already exists (case-insensitive)
  */
 static int group_exists(const char* name) {
     for (int i = 0; i < group_count; i++) {
-        if (strcmp(groups[i].name, name) == 0) {
+        if (strcasecmp_xmen(groups[i].name, name) == 0) {
             return 1;
         }
     }
@@ -600,7 +630,7 @@ static xmen_group* read_xmen_groups(char** mendefs) {
         char *line = mendefs[idx];
 
         /* Check for MAIN or [ */
-        if (strcmp(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
+        if (strcasecmp_xmen(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
             /* Check for duplicate MAIN definition */
             if (group_exists("MAIN")) {
                 fprintf(stderr, "Error: Duplicate MAIN block definition\n");
@@ -626,7 +656,7 @@ static xmen_group* read_xmen_groups(char** mendefs) {
         }
 
         /* Check for GROUP or { */
-        if (strncmp(line, "GROUP", 5) == 0 || strncmp(line, "{", 1) == 0) {
+        if (strncasecmp_xmen(line, "GROUP", 5) == 0 || strncmp(line, "{", 1) == 0) {
             if (group_count >= MAX_GROUPS) {
                 fprintf(stderr, "Error: Number of groups (%d) exceeds maximum limit (%d)\n",
                         group_count + 1, MAX_GROUPS);
@@ -679,11 +709,11 @@ static xmen_group* read_xmen_groups(char** mendefs) {
 }
 
 /*
- * Step 6: Get pointer to MAIN mensur
+ * Step 6: Get pointer to MAIN mensur (case-insensitive)
  */
 static mensur* get_main_xmen(xmen_group* mens) {
     for (int i = 0; i < group_count; i++) {
-        if (strcmp(mens[i].name, "MAIN") == 0) {
+        if (strcasecmp_xmen(mens[i].name, "MAIN") == 0) {
             return mens[i].men;
         }
     }
@@ -691,11 +721,11 @@ static mensur* get_main_xmen(xmen_group* mens) {
 }
 
 /*
- * Find group by name
+ * Find group by name (case-insensitive)
  */
 static mensur* find_xmen(const char* name) {
     for (int i = 0; i < group_count; i++) {
-        if (strcmp(groups[i].name, name) == 0) {
+        if (strcasecmp_xmen(groups[i].name, name) == 0) {
             return groups[i].men;
         }
     }
@@ -990,33 +1020,48 @@ int test_xmensur_error_handling(void) {
         failed++;
     }
 
-    /* Test 9: Mixed case keyword (should fail) */
+    /* Test 9: Mixed case valid keywords (should succeed now) */
     test_count++;
-    printf("Test %d: Unknown mixed case keyword\n", test_count);
+    printf("Test %d: Mixed case valid keywords (case-insensitive)\n", test_count);
     f = fopen("test_mixed_case.xmen", "w");
-    fprintf(f, "MAIN\n10,10,100\nMyKeyword\n10,0,0\nEND_MAIN\n");
+    fprintf(f, "Main\n10,10,100\nOpen_End\nEnd_Main\n");
     fclose(f);
     result = read_xmensur("test_mixed_case.xmen");
-    if (result == NULL) {
-        printf("  ✓ PASSED\n\n");
-        passed++;
-    } else {
-        printf("  ✗ FAILED (expected NULL)\n\n");
-        failed++;
-    }
-
-    /* Test 10: Valid keywords should still work */
-    test_count++;
-    printf("Test %d: All valid keywords\n", test_count);
-    f = fopen("test_all_valid_keywords.xmen", "w");
-    fprintf(f, "MAIN\n10,10,100\nOPEN_END\nEND_MAIN\n");
-    fclose(f);
-    result = read_xmensur("test_all_valid_keywords.xmen");
     if (result != NULL) {
         printf("  ✓ PASSED\n\n");
         passed++;
     } else {
         printf("  ✗ FAILED (expected non-NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 10: All lowercase keywords should work */
+    test_count++;
+    printf("Test %d: All lowercase keywords\n", test_count);
+    f = fopen("test_all_lowercase.xmen", "w");
+    fprintf(f, "main\n10,10,100\nopen_end\nend_main\n");
+    fclose(f);
+    result = read_xmensur("test_all_lowercase.xmen");
+    if (result != NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected non-NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 11: Unknown keyword should still fail */
+    test_count++;
+    printf("Test %d: Unknown keyword\n", test_count);
+    f = fopen("test_truly_unknown.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\nBAD_KEYWORD\n10,0,0\nEND_MAIN\n");
+    fclose(f);
+    result = read_xmensur("test_truly_unknown.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
         failed++;
     }
 
@@ -1030,7 +1075,8 @@ int test_xmensur_error_handling(void) {
     remove("test_unknown_keyword.xmen");
     remove("test_unknown_with_comma.xmen");
     remove("test_mixed_case.xmen");
-    remove("test_all_valid_keywords.xmen");
+    remove("test_all_lowercase.xmen");
+    remove("test_truly_unknown.xmen");
 
     printf("================================\n");
     printf("Tests completed: %d total, %d passed, %d failed\n", test_count, passed, failed);

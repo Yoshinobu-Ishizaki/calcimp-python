@@ -24,10 +24,12 @@ Comment is inserted at any position starting with  '#' (same as Python).
 
 Unit is in mm. All calculation is done under SI unit system.
 
+**Keywords are case-insensitive.** You can use `MAIN`, `Main`, `main`, or any combination of cases.
+
 3 types of line are valid for xmensur file.
 
-- Variable definition such as `x = 1.2`. Simple arithmetic(`+-*/()`) code can be used. ex. `y = (x-3.4)*2`. Defined variables can be used in Marker or Cell line. Duplicated definition of same variable name is not allowed.
-- Marker lines such as `GROUP/END_GROUP,MAIN/END_MAIN,INSERT(@),SPLIT(|),BRANCH(>),MERGE(<)`
+- Variable definition such as `x = 1.2`. Simple arithmetic(`+-*/()`) code can be used. ex. `y = (x-3.4)*2`. Defined variables can be used in Marker or Cell line. Duplicated definition of same variable name is not allowed (case-insensitive).
+- Marker lines such as `GROUP/END_GROUP,MAIN/END_MAIN,INSERT(@),SPLIT(|),BRANCH(>),MERGE(<)` (case-insensitive)
 - Normal mensur Cell definition `dia_forward, dia_backward, rel_len`
 
 ### Basics
@@ -112,7 +114,7 @@ Most of the case, $df_i = db_{i-1}$.
 
 It is easy to write and read a mensur file, if we can use grouping.
 
-`GROUP, END_GROUP` or symbol '{}' can be used to express grouping.
+`GROUP, END_GROUP` or symbol '{}' can be used to express grouping. Keywords are case-insensitive (e.g., `GROUP`, `Group`, `group` are all valid).
 
 ```
 {,BELL
@@ -132,7 +134,7 @@ INSERT, name
 
 Notice that MAIN/END_MAIN is a special case of GROUP.
 
-Duplicated definition of GROUP with same name is not allowed.
+Duplicated definition of GROUP with same name is not allowed (case-insensitive, e.g., `side` and `SIDE` are considered the same).
 
 GROUP can be nested.
 
@@ -152,7 +154,7 @@ $$
 \frac{1}{z} = \frac{1}{z_1} + \frac{1}{z_2}
 $$
 
-To express this SPLIT, keyword `SPLIT` and symbol `|` can be used in XMEN file.
+To express this SPLIT, keyword `SPLIT` (case-insensitive) and symbol `|` can be used in XMEN file.
 
 ```
 SPLIT, name, ratio
@@ -187,7 +189,7 @@ Such state must be calculated to know half valve acoustic impedance.
 For precise calculation at merging point (left side of picture above), see 
 [loop_impedance.nb.pdf](loop_impedance.nb.pdf).
 
-For this purpose, `BRANCH` and `MERGE` or `<` and `>` can be used in XMEN file.
+For this purpose, `BRANCH` and `MERGE` (case-insensitive) or `<` and `>` can be used in XMEN file.
 
 ```
 BRANCH, name, ratio
