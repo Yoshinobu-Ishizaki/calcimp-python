@@ -1,27 +1,26 @@
 /*
- * xmensur.c - XMENSUR format parser
- *
- * XMENSUR format uses:
- * - # for comments (like Python)
- * - [] or MAIN/END_MAIN for main bore
- * - {} or GROUP/END_GROUP for sub-mensur groups
- * - Python-style variable assignments: var = value
- * - OPEN_END, CLOSED_END keywords
- * - <, >, | for BRANCH, MERGE, SPLIT
+ * XMENSUR file format parser
+ * Rewritten to follow zmensur.c structure with 4 phases:
+ * 1. Read and parse variables
+ * 2. Read and store group definitions (child mensurs)
+ * 3. Build main mensur structure
+ * 4. Resolve connections and rejoint branches
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <glib.h>
+#include <math.h>
+#include <sys/stat.h>
 #include "zmensur.h"
-#include "xmensur.h"
 #include "kutils.h"
+#include "xmensur.h"
+#include "tinyexpr.h"
 
-#define MAX_LINE 1024
-#define MAX_VARS 64
+#define MAX_VARS 256
 #define MAX_GROUPS 32
+#define MAX_LINE 1024
 
 /* Variable storage */
 typedef struct {
@@ -29,45 +28,90 @@ typedef struct {
     double value;
 } xmen_var;
 
-static xmen_var variables[MAX_VARS];
-static int var_count = 0;
-
-/* Group storage */
+/* Group (child mensur) storage */
 typedef struct {
     char name[256];
     mensur *men;
 } xmen_group;
 
+static xmen_var variables[MAX_VARS];
+static int var_count = 0;
+
 static xmen_group groups[MAX_GROUPS];
 static int group_count = 0;
 
 /* Forward declarations */
-static char* skip_whitespace(char *p);
-static char* remove_xmen_comment(char *line);
-static int parse_variable(char *line);
+static char* skip_whitespace(char *s);
+static char* trim_line(char *line);
 static double evaluate_expression(char *expr);
-static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_group);
+static int parse_variable(char *line);
+static void read_xmen_variables(const char *buffer);
+static void read_xmen_groups(const char *buffer);
+static mensur* parse_group_content(const char **lines, int *line_idx, int max_lines);
+static mensur* build_xmen(const char *buffer);
+static void resolve_xmen_child(mensur *men);
 
 /*
- * Skip whitespace characters
+ * Skip leading whitespace
  */
-static char* skip_whitespace(char *p) {
-    while (*p && isspace(*p)) p++;
-    return p;
+static char* skip_whitespace(char *s) {
+    while (*s && isspace((unsigned char)*s)) s++;
+    return s;
 }
 
 /*
- * Remove comments (# to end of line)
+ * Trim line: remove comments and trailing whitespace
  */
-static char* remove_xmen_comment(char *line) {
+static char* trim_line(char *line) {
+    /* Remove # comments */
     char *p = strchr(line, '#');
     if (p) *p = '\0';
+
+    /* Skip leading whitespace */
+    line = skip_whitespace(line);
+
+    /* Remove trailing whitespace */
+    p = line + strlen(line) - 1;
+    while (p >= line && isspace((unsigned char)*p)) {
+        *p = '\0';
+        p--;
+    }
+
     return line;
 }
 
 /*
+ * Evaluate arithmetic expression with variables using TinyExpr
+ * Supports: +, -, *, /, (), sin, cos, tan, sqrt, pi, etc.
+ */
+static double evaluate_expression(char *expr) {
+    /* Build array of te_variable for TinyExpr */
+    te_variable *te_vars = malloc(var_count * sizeof(te_variable));
+    for (int i = 0; i < var_count; i++) {
+        te_vars[i].name = variables[i].name;
+        te_vars[i].address = &variables[i].value;
+        te_vars[i].type = TE_VARIABLE;
+        te_vars[i].context = NULL;
+    }
+
+    /* Compile and evaluate expression */
+    int err;
+    te_expr *compiled = te_compile(expr, te_vars, var_count, &err);
+    double result = 0.0;
+
+    if (compiled) {
+        result = te_eval(compiled);
+        te_free(compiled);
+    } else {
+        fprintf(stderr, "Error parsing expression '%s' at position %d\n", expr, err);
+    }
+
+    free(te_vars);
+    return result;
+}
+
+/*
  * Parse variable assignment: var = value
- * Returns 1 if line was a variable assignment, 0 otherwise
  */
 static int parse_variable(char *line) {
     char *eq = strchr(line, '=');
@@ -77,20 +121,17 @@ static int parse_variable(char *line) {
     char *name = skip_whitespace(line);
     char *value_str = skip_whitespace(eq + 1);
 
-    /* Remove trailing whitespace from name */
+    /* Remove trailing whitespace */
     char *end = name + strlen(name) - 1;
-    while (end > name && isspace(*end)) *end-- = '\0';
+    while (end > name && isspace((unsigned char)*end)) *end-- = '\0';
 
-    /* Remove trailing comma if present */
     end = value_str + strlen(value_str) - 1;
-    while (end > value_str && (*end == ',' || isspace(*end))) *end-- = '\0';
+    while (end > value_str && (*end == ',' || isspace((unsigned char)*end))) *end-- = '\0';
 
-    if (var_count < MAX_VARS) {
+    if (var_count < MAX_VARS && strlen(name) > 0) {
         strncpy(variables[var_count].name, name, sizeof(variables[var_count].name) - 1);
+        variables[var_count].name[63] = '\0';
         variables[var_count].value = evaluate_expression(value_str);
-        if (getenv("DEBUG_XMENSUR")) {
-            fprintf(stderr, "XMENSUR VAR: %s = %s = %.6f\n", name, value_str, variables[var_count].value);
-        }
         var_count++;
         return 1;
     }
@@ -99,281 +140,332 @@ static int parse_variable(char *line) {
 }
 
 /*
- * Evaluate simple arithmetic expression with variables
- * Supports: +, -, *, /, numbers, variables
- * Uses a simple recursive descent parser with operator precedence
- */
-static double evaluate_term(char **p);
-static double evaluate_factor(char **p);
-
-static double evaluate_expression(char *expr) {
-    char *p = expr;
-    return evaluate_term(&p);
-}
-
-static double evaluate_term(char **pp) {
-    double result = evaluate_factor(pp);
-    char *p = skip_whitespace(*pp);
-
-    while (*p == '+' || *p == '-') {
-        char op = *p++;
-        *pp = p;
-        double right = evaluate_factor(pp);
-        if (op == '+') result += right;
-        else result -= right;
-        p = skip_whitespace(*pp);
-    }
-    *pp = p;
-    return result;
-}
-
-static double evaluate_factor(char **pp) {
-    double result;
-    char *p = skip_whitespace(*pp);
-
-    /* Check if it's a variable */
-    if (isalpha(*p) || *p == '_') {
-        char varname[64];
-        int i = 0;
-        while ((isalnum(*p) || *p == '_') && i < 63) {
-            varname[i++] = *p++;
-        }
-        varname[i] = '\0';
-
-        /* Look up variable */
-        result = 0.0;
-        for (i = 0; i < var_count; i++) {
-            if (strcmp(variables[i].name, varname) == 0) {
-                result = variables[i].value;
-                break;
-            }
-        }
-    } else {
-        /* Parse as number */
-        result = strtod(p, &p);
-    }
-
-    /* Handle * and / */
-    p = skip_whitespace(p);
-    while (*p == '*' || *p == '/') {
-        char op = *p++;
-        p = skip_whitespace(p);
-        double right;
-        if (isalpha(*p) || *p == '_') {
-            char varname[64];
-            int i = 0;
-            while ((isalnum(*p) || *p == '_') && i < 63) {
-                varname[i++] = *p++;
-            }
-            varname[i] = '\0';
-            right = 0.0;
-            for (i = 0; i < var_count; i++) {
-                if (strcmp(variables[i].name, varname) == 0) {
-                    right = variables[i].value;
-                    break;
-                }
-            }
-        } else {
-            right = strtod(p, &p);
-        }
-
-        if (op == '*') result *= right;
-        else if (right != 0.0) result /= right;
-
-        p = skip_whitespace(p);
-    }
-
-    *pp = p;
-    return result;
-}
-
-/*
- * Parse df,db,r values from line
- * Returns 1 on success, 0 on failure
+ * Parse df,db,r,comment line
  */
 static int parse_dfdbr(char *line, double *df, double *db, double *r, char *comment) {
     char *tokens[4];
     int token_count = 0;
+
+    /* Tokenize by comma */
     char *p = line;
-    char *start;
-
-    /* Split by commas */
+    char *start = p;
     while (*p && token_count < 4) {
-        while (*p && isspace(*p)) p++;
-        if (!*p) break;
-
-        start = p;
-        while (*p && *p != ',') p++;
-
-        size_t len = p - start;
-        tokens[token_count] = malloc(len + 1);
-        strncpy(tokens[token_count], start, len);
-        tokens[token_count][len] = '\0';
-
-        /* Trim trailing whitespace */
-        char *end = tokens[token_count] + strlen(tokens[token_count]) - 1;
-        while (end >= tokens[token_count] && isspace(*end)) *end-- = '\0';
-
-        token_count++;
-        if (*p == ',') p++;
+        if (*p == ',') {
+            *p = '\0';
+            tokens[token_count++] = skip_whitespace(start);
+            start = p + 1;
+        }
+        p++;
+    }
+    if (token_count < 4 && *start) {
+        tokens[token_count++] = skip_whitespace(start);
     }
 
-    if (token_count < 3) {
-        for (int i = 0; i < token_count; i++) free(tokens[i]);
-        return 0;
-    }
+    if (token_count < 3) return 0;
 
     *df = evaluate_expression(tokens[0]);
     *db = evaluate_expression(tokens[1]);
     *r = evaluate_expression(tokens[2]);
 
-    if (token_count > 3 && comment) {
-        strncpy(comment, tokens[3], 63);
-        comment[63] = '\0';
-    } else if (comment) {
-        comment[0] = '\0';
+    if (comment) {
+        if (token_count > 3 && tokens[3]) {
+            strncpy(comment, skip_whitespace(tokens[3]), 63);
+            comment[63] = '\0';
+        } else {
+            comment[0] = '\0';
+        }
     }
 
-    for (int i = 0; i < token_count; i++) free(tokens[i]);
     return 1;
 }
 
 /*
- * Parse a mensur section (between brackets or MAIN/END_MAIN)
+ * Phase 1: Read and parse all variable definitions
  */
-static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_group) {
-    char line[MAX_LINE];
-    mensur *head = NULL, *cur = NULL;
-    double df, db, r;
-    char comment[64];
+static void read_xmen_variables(const char *buffer) {
+    var_count = 0;
 
-    while (fgets(line, sizeof(line), fp)) {
-        remove_xmen_comment(line);
-        char *p = skip_whitespace(line);
+    char *buf = strdup(buffer);
+    char *line = strtok(buf, "\n");
 
-        /* Skip empty lines */
-        if (!*p || *p == '\n') continue;
+    while (line != NULL) {
+        line = trim_line(line);
 
-        /* Remove trailing newline */
-        char *nl = strchr(p, '\n');
-        if (nl) *nl = '\0';
-
-        if (getenv("DEBUG_XMENSUR_VERBOSE")) {
-            fprintf(stderr, "  [%s] Read: '%s'\n", group_name, p);
+        if (strlen(line) == 0) {
+            line = strtok(NULL, "\n");
+            continue;
         }
 
-        /* Check for end markers */
-        if (strcmp(p, "]") == 0 || strcmp(p, "END_MAIN") == 0) {
-            *in_group = 0;
+        /* Stop when we hit MAIN or GROUP */
+        if (strcmp(line, "MAIN") == 0 || strcmp(line, "[") == 0 ||
+            strncmp(line, "GROUP", 5) == 0 || line[0] == '{') {
             break;
         }
 
-        /* Ignore GROUP/END_GROUP markers when nested inside MAIN */
-        /* These are just for organization, not actual sub-mensurs */
-        if (strcmp(p, "}") == 0 || strcmp(p, "END_GROUP") == 0 ||
-            *p == '{' || strncmp(p, "GROUP", 5) == 0) {
-            /* For top-level groups (V1LOOP, etc.), END_GROUP should exit */
-            /* For nested groups inside MAIN, just skip the marker */
-            if (strcmp(group_name, "MAIN") != 0) {
-                /* This is a top-level group like V1LOOP, so END_GROUP exits */
-                if (strcmp(p, "}") == 0 || strcmp(p, "END_GROUP") == 0) {
-                    *in_group = 0;
-                    break;
-                }
-            }
-            /* Skip GROUP/END_GROUP markers */
+        /* Parse variable */
+        if (strchr(line, '=')) {
+            char *line_copy = strdup(line);
+            parse_variable(line_copy);
+            free(line_copy);
+        }
+
+        line = strtok(NULL, "\n");
+    }
+
+    free(buf);
+}
+
+/*
+ * Parse content of a GROUP and return mensur chain
+ */
+static mensur* parse_group_content(const char **lines, int *line_idx, int max_lines) {
+    mensur *head = NULL, *cur = NULL;
+
+    while (*line_idx < max_lines) {
+        char *line = strdup(lines[*line_idx]);
+        (*line_idx)++;
+
+        line = trim_line(line);
+
+        if (strlen(line) == 0) {
+            free(line);
             continue;
         }
 
-        /* Check for variable assignment */
-        if (strchr(p, '=')) {
-            parse_variable(p);
-            continue;
+        /* Check for end markers */
+        if (strcmp(line, "END_GROUP") == 0 || strcmp(line, "}") == 0) {
+            free(line);
+            break;
         }
 
-        /* Check for nested GROUP - TEMPORARILY DISABLED FOR TESTING
-        if (*p == '{' || strncmp(p, "GROUP", 5) == 0) {
-            char nested_group_name[256] = "";
-
-            if (*p == '{') {
-                p++;
-                if (*p == ',') p++;
-                p = skip_whitespace(p);
-                strncpy(nested_group_name, p, 255);
-            } else {
-                p += 5;
-                if (*p == ',') p++;
-                p = skip_whitespace(p);
-                strncpy(nested_group_name, p, 255);
-            }
-
-            char *end = nested_group_name + strlen(nested_group_name) - 1;
-            while (end >= nested_group_name && (isspace(*end) || *end == ',')) *end-- = '\0';
-
-            int nested_in_group = 1;
-            mensur *nested_men = parse_mensur_section(fp, nested_group_name, &nested_in_group);
-
-            if (nested_men) {
-                if (!head) {
-                    head = nested_men;
-                    cur = get_last_men(nested_men);
-                } else {
-                    cur->next = nested_men;
-                    nested_men->prev = cur;
-                    cur = get_last_men(nested_men);
-                }
-            }
-            continue;
-        }
-        */
-
-        /* Check for special keywords */
-        if (strcmp(p, "OPEN_END") == 0) {
-            if (getenv("DEBUG_XMENSUR_VERBOSE")) {
-                fprintf(stderr, "  [%s] Matched OPEN_END, cur=%p\n", group_name, (void*)cur);
-            }
+        /* Check for OPEN_END */
+        if (strcmp(line, "OPEN_END") == 0) {
             if (cur) {
-                if (getenv("DEBUG_XMENSUR")) {
-                    fprintf(stderr, "XMENSUR [%s]: df=%.4f, db=0.0000, r=0.0000, comment='OPEN_END'\n",
-                            group_name, cur->db);
-                }
                 cur = append_men(cur, cur->db, 0, 0, "");
             }
+            free(line);
             continue;
         }
 
-        if (strcmp(p, "CLOSED_END") == 0) {
+        /* Check for CLOSED_END */
+        if (strcmp(line, "CLOSED_END") == 0) {
             if (cur) {
-                if (getenv("DEBUG_XMENSUR")) {
-                    fprintf(stderr, "XMENSUR [%s]: df=0.0000, db=0.0000, r=0.0000, comment='CLOSED_END'\n",
-                            group_name);
-                }
                 cur = append_men(cur, 0, 0, 0, "");
             }
+            free(line);
             continue;
         }
 
-        /* Check for branch/merge/split directives */
-        if (*p == '<' || *p == '>' || *p == '|' ||
-            strncmp(p, "BRANCH", 6) == 0 || strncmp(p, "MERGE", 5) == 0 ||
-            strncmp(p, "SPLIT", 5) == 0) {
+        /* Try to parse as df,db,r line */
+        double df, db, r;
+        char comment[64];
+        if (parse_dfdbr(line, &df, &db, &r, comment)) {
+            /* Convert mm to m */
+            df *= 0.001;
+            db *= 0.001;
+            r *= 0.001;
 
-            char directive = *p;
-            if (strncmp(p, "BRANCH", 6) == 0) {
-                directive = '>';  /* BRANCH -> SPLIT */
-                p += 6;  /* Skip "BRANCH" */
-            } else if (strncmp(p, "MERGE", 5) == 0) {
-                directive = '<';  /* MERGE -> JOIN */
-                p += 5;  /* Skip "MERGE" */
-            } else if (strncmp(p, "SPLIT", 5) == 0) {
-                directive = '|';
-                p += 5;  /* Skip "SPLIT" */
+            if (!head) {
+                head = create_men(df, db, r, comment);
+                cur = head;
             } else {
-                /* Single character directive */
-                p++;
+                cur = append_men(cur, df, db, r, comment);
+            }
+        }
+
+        free(line);
+    }
+
+    return head;
+}
+
+/*
+ * Phase 2: Read and store all GROUP definitions
+ */
+static void read_xmen_groups(const char *buffer) {
+    group_count = 0;
+
+    /* Split buffer into lines */
+    char *buf = strdup(buffer);
+    char *all_lines[10000];
+    int line_count = 0;
+
+    char *line = strtok(buf, "\n");
+    while (line != NULL && line_count < 10000) {
+        all_lines[line_count++] = strdup(line);
+        line = strtok(NULL, "\n");
+    }
+    free(buf);
+
+    /* Find and parse GROUP definitions outside MAIN */
+    int in_main = 0;
+    int i = 0;
+
+    while (i < line_count) {
+        char *line = trim_line(strdup(all_lines[i]));
+        i++;
+
+        if (strlen(line) == 0) {
+            free(line);
+            continue;
+        }
+
+        /* Track MAIN section */
+        if (strcmp(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
+            in_main = 1;
+            free(line);
+            continue;
+        }
+        if (strcmp(line, "END_MAIN") == 0 || strcmp(line, "]") == 0) {
+            in_main = 0;
+            free(line);
+            continue;
+        }
+
+        /* Parse GROUP definitions outside MAIN */
+        if (!in_main && (strncmp(line, "GROUP", 5) == 0 || line[0] == '{')) {
+            char group_name[256] = "";
+
+            /* Extract group name */
+            if (line[0] == '{') {
+                char *p = line + 1;
+                if (*p == ',') p++;
+                p = skip_whitespace(p);
+                strncpy(group_name, p, 255);
+            } else {
+                char *p = line + 5;  /* Skip "GROUP" */
+                if (*p == ',') p++;
+                p = skip_whitespace(p);
+                strncpy(group_name, p, 255);
             }
 
-            /* Skip comma if present */
+            /* Trim group name */
+            char *end = group_name + strlen(group_name) - 1;
+            while (end >= group_name && (isspace((unsigned char)*end) || *end == ',')) {
+                *end = '\0';
+                end--;
+            }
+
+            /* Parse group content */
+            mensur *group_men = parse_group_content((const char**)all_lines, &i, line_count);
+
+            if (group_count < MAX_GROUPS && group_men) {
+                strncpy(groups[group_count].name, group_name, 255);
+                groups[group_count].name[255] = '\0';
+                groups[group_count].men = group_men;
+                group_count++;
+            }
+        }
+
+        free(line);
+    }
+
+    /* Free lines */
+    for (i = 0; i < line_count; i++) {
+        free(all_lines[i]);
+    }
+}
+
+/*
+ * Phase 3: Build main mensur structure from MAIN section
+ */
+static mensur* build_xmen(const char *buffer) {
+    mensur *head = NULL, *cur = NULL;
+
+    /* Split buffer into lines */
+    char *buf = strdup(buffer);
+    char *all_lines[10000];
+    int line_count = 0;
+
+    char *line = strtok(buf, "\n");
+    while (line != NULL && line_count < 10000) {
+        all_lines[line_count++] = strdup(line);
+        line = strtok(NULL, "\n");
+    }
+    free(buf);
+
+    /* Find and parse MAIN section */
+    int in_main = 0;
+    int in_nested_group = 0;
+
+    for (int i = 0; i < line_count; i++) {
+        char *line = trim_line(strdup(all_lines[i]));
+
+        if (strlen(line) == 0) {
+            free(line);
+            continue;
+        }
+
+        /* Check for MAIN start */
+        if (!in_main && (strcmp(line, "MAIN") == 0 || strcmp(line, "[") == 0)) {
+            in_main = 1;
+            free(line);
+            continue;
+        }
+
+        if (!in_main) {
+            free(line);
+            continue;
+        }
+
+        /* Check for MAIN end */
+        if (strcmp(line, "END_MAIN") == 0 || strcmp(line, "]") == 0) {
+            in_main = 0;
+            free(line);
+            break;
+        }
+
+        /* Handle nested GROUP markers (just skip them - inline expansion) */
+        if (strncmp(line, "GROUP", 5) == 0 || line[0] == '{') {
+            in_nested_group = 1;
+            free(line);
+            continue;
+        }
+        if (strcmp(line, "END_GROUP") == 0 || strcmp(line, "}") == 0) {
+            in_nested_group = 0;
+            free(line);
+            continue;
+        }
+
+        /* Handle OPEN_END */
+        if (strcmp(line, "OPEN_END") == 0) {
+            if (cur) {
+                cur = append_men(cur, cur->db, 0, 0, "");
+            }
+            free(line);
+            continue;
+        }
+
+        /* Handle CLOSED_END */
+        if (strcmp(line, "CLOSED_END") == 0) {
+            if (cur) {
+                cur = append_men(cur, 0, 0, 0, "");
+            }
+            free(line);
+            continue;
+        }
+
+        /* Handle BRANCH/MERGE/SPLIT directives */
+        if (strncmp(line, "BRANCH", 6) == 0 || strncmp(line, "MERGE", 5) == 0 ||
+            strncmp(line, "SPLIT", 5) == 0 || line[0] == '>' || line[0] == '<' || line[0] == '|') {
+
+            char directive;
+            char *p = line;
+
+            if (strncmp(p, "BRANCH", 6) == 0) {
+                directive = '>';  /* BRANCH -> SPLIT */
+                p += 6;
+            } else if (strncmp(p, "MERGE", 5) == 0) {
+                directive = '<';  /* MERGE -> JOIN */
+                p += 5;
+            } else if (strncmp(p, "SPLIT", 5) == 0) {
+                directive = '|';
+                p += 5;
+            } else {
+                directive = *p++;
+            }
+
+            /* Skip comma */
             p = skip_whitespace(p);
             if (*p == ',') p++;
             p = skip_whitespace(p);
@@ -387,74 +479,46 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
                 if (len > 255) len = 255;
                 strncpy(name, p, len);
                 name[len] = '\0';
-                /* Trim whitespace */
                 char *end = name + strlen(name) - 1;
-                while (end >= name && isspace(*end)) *end-- = '\0';
-
+                while (end >= name && isspace((unsigned char)*end)) *end-- = '\0';
                 ratio = evaluate_expression(skip_whitespace(comma + 1));
             } else {
                 strncpy(name, p, 255);
                 name[255] = '\0';
-                /* Trim whitespace and trailing comma */
                 char *end = name + strlen(name) - 1;
-                while (end >= name && (isspace(*end) || *end == ',')) *end-- = '\0';
+                while (end >= name && (isspace((unsigned char)*end) || *end == ',')) *end-- = '\0';
             }
 
-            /* Create marker mensur with side branch reference */
+            /* Create marker segment */
             if (cur) {
                 mensur *marker = append_men(cur, cur->db, cur->db, 0, "");
                 strncpy(marker->sidename, name, sizeof(marker->sidename) - 1);
+                marker->sidename[15] = '\0';
                 marker->s_ratio = ratio;
 
                 if (directive == '>') {
-                    marker->s_type = SPLIT;  /* BRANCH start (>) */
+                    marker->s_type = SPLIT;
                 } else if (directive == '<') {
-                    marker->s_type = JOIN;   /* MERGE end (<) */
+                    marker->s_type = JOIN;
                 } else if (directive == '|') {
-                    marker->s_type = TONEHOLE;  /* SPLIT/tonehole */
+                    marker->s_type = TONEHOLE;
                 }
 
                 cur = marker;
             }
-            continue;
-        }
 
-        /* Check for INSERT directive */
-        if (*p == '@' || strncmp(p, "INSERT", 6) == 0) {
-            /* Similar to branch handling */
-            if (*p == '@') p++;
-            else p += 6;
-
-            if (*p == ',') p++;
-            p = skip_whitespace(p);
-
-            char name[256];
-            strncpy(name, p, 255);
-            name[255] = '\0';
-            char *end = name + strlen(name) - 1;
-            while (end >= name && (isspace(*end) || *end == ',')) *end-- = '\0';
-
-            /* Insert will be resolved later */
-            if (cur) {
-                mensur *marker = append_men(cur, cur->db, cur->db, 0, "");
-                strncpy(marker->sidename, name, sizeof(marker->sidename) - 1);
-                marker->s_type = ADDON;
-                cur = marker;
-            }
+            free(line);
             continue;
         }
 
         /* Try to parse as df,db,r line */
-        if (parse_dfdbr(p, &df, &db, &r, comment)) {
+        double df, db, r;
+        char comment[64];
+        if (parse_dfdbr(line, &df, &db, &r, comment)) {
             /* Convert mm to m */
             df *= 0.001;
             db *= 0.001;
             r *= 0.001;
-
-            if (getenv("DEBUG_XMENSUR")) {
-                fprintf(stderr, "XMENSUR [%s]: df=%.4f, db=%.4f, r=%.4f, comment='%s'\n",
-                        group_name, df, db, r, comment);
-            }
 
             if (!head) {
                 head = create_men(df, db, r, comment);
@@ -463,180 +527,214 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
                 cur = append_men(cur, df, db, r, comment);
             }
         }
+
+        free(line);
+    }
+
+    /* Free lines */
+    for (int i = 0; i < line_count; i++) {
+        free(all_lines[i]);
     }
 
     return head;
 }
 
+/* Find xmen which has specified name */
+mensur* find_xmen(char* name){
+    mensur* men = NULL;
+
+    for (int i = 0; i < group_count; i++) {
+        if (strcmp(groups[i].name, name) == 0) {
+            men = groups[i].men;
+            break;
+        }
+    }
+    return men;
+}
+
 /*
- * Main function to read XMENSUR format file
+ * Phase 4: Resolve child mensur connections
+ */
+static void resolve_xmen_child(mensur *men) {
+    mensur *m = men;  /* Use men directly, don't call get_first_men */
+
+    while (m != NULL) {
+        if (m->sidename[0] != '\0') {
+            mensur* child = find_xmen(m->sidename);
+            if (child != NULL){
+                if( m->s_type != JOIN) {
+                    /* SPLIT or BRANCH */
+                    m->side = child;
+                    resolve_xmen_child(child); /* recursive call for resolving */
+                }else{
+                    /* JOIN */
+                    m->side = get_last_men(child); /* join last element of child branch */
+                }
+            }else{
+                fprintf("cannot find corresponding child : \"%s\"", m->sidename);
+            }
+        }
+        m = m->next;
+    }
+}
+
+/*
+ * Validate XMENSUR file structure:
+ * - Check for duplicate GROUP names
+ * - Check for multiple MAIN definitions
+ * Returns 1 if valid, 0 if invalid
+ */
+static int validate_xmensur_structure(const char *buffer) {
+    char *buf = strdup(buffer);
+    char *line = strtok(buf, "\n");
+
+    int main_count = 0;
+    char group_names[MAX_GROUPS][256];
+    int group_name_count = 0;
+    int in_main = 0;
+
+    while (line != NULL) {
+        char *trimmed = trim_line(strdup(line));
+
+        if (strlen(trimmed) > 0) {
+            /* Check for MAIN definition */
+            if (strcmp(trimmed, "MAIN") == 0 || strcmp(trimmed, "[") == 0) {
+                main_count++;
+                in_main = 1;
+                if (main_count > 1) {
+                    fprintf(stderr, "Error: Multiple MAIN definitions found in XMENSUR file\n");
+                    free(trimmed);
+                    free(buf);
+                    return 0;
+                }
+            }
+
+            /* Check for END_MAIN */
+            if (strcmp(trimmed, "END_MAIN") == 0 || strcmp(trimmed, "]") == 0) {
+                in_main = 0;
+            }
+
+            /* Check for GROUP definition (only outside MAIN) */
+            if (!in_main && (strncmp(trimmed, "GROUP", 5) == 0 || trimmed[0] == '{')) {
+                /* Extract group name */
+                char *p = trimmed;
+                if (strncmp(p, "GROUP", 5) == 0) {
+                    p += 5;
+                    p = skip_whitespace(p);
+                    if (*p == ',') p++;
+                    p = skip_whitespace(p);
+                } else {
+                    p++; /* Skip '{' */
+                    p = skip_whitespace(p);
+                }
+
+                /* Get group name */
+                char name[256];
+                int i = 0;
+                while (*p && *p != ',' && !isspace((unsigned char)*p) && i < 255) {
+                    name[i++] = *p++;
+                }
+                name[i] = '\0';
+
+                if (strlen(name) > 0) {
+                    /* Check for duplicate */
+                    for (int j = 0; j < group_name_count; j++) {
+                        if (strcmp(group_names[j], name) == 0) {
+                            fprintf(stderr, "Error: Duplicate GROUP definition '%s' found in XMENSUR file\n", name);
+                            free(trimmed);
+                            free(buf);
+                            return 0;
+                        }
+                    }
+
+                    /* Add to list */
+                    if (group_name_count < MAX_GROUPS) {
+                        strncpy(group_names[group_name_count], name, 255);
+                        group_names[group_name_count][255] = '\0';
+                        group_name_count++;
+                    }
+                }
+            }
+        }
+
+        free(trimmed);
+        line = strtok(NULL, "\n");
+    }
+
+    free(buf);
+
+    /* Check that MAIN was defined */
+    if (main_count == 0) {
+        fprintf(stderr, "Error: No MAIN definition found in XMENSUR file\n");
+        return 0;
+    }
+
+    return 1;
+}
+
+/*
+ * Main entry point: Read XMENSUR file
  */
 mensur* read_xmensur(const char *path) {
-    FILE *fp = fopen(path, "r");
-    if (!fp) {
+    int err;
+    FILE *infile;
+    mensur *men = NULL;
+    struct stat fstatus;
+    unsigned long readbytes;
+    char *readbuffer;
+
+    /* Open and read entire file */
+    if ((err = stat(path, &fstatus)) != 0) {
         fprintf(stderr, "Failed to open XMENSUR file: %s\n", path);
         return NULL;
     }
 
-    /* Reset global state */
-    var_count = 0;
-    group_count = 0;
-
-    char line[MAX_LINE];
-    mensur *main_men = NULL;
-    int in_group = 0;
-    char current_group[256] = "";
-
-    while (fgets(line, sizeof(line), fp)) {
-        remove_xmen_comment(line);
-        char *p = skip_whitespace(line);
-
-        /* Skip empty lines */
-        if (!*p || *p == '\n') continue;
-
-        /* Remove trailing newline */
-        char *nl = strchr(p, '\n');
-        if (nl) *nl = '\0';
-
-        /* Check for variable assignment */
-        if (strchr(p, '=')) {
-            parse_variable(p);
-            continue;
-        }
-
-        /* Check for main section start */
-        if (*p == '[' || strcmp(p, "MAIN") == 0) {
-            in_group = 1;
-            main_men = parse_mensur_section(fp, "MAIN", &in_group);
-            continue;
-        }
-
-        /* Check for group section start */
-        if (*p == '{' || strncmp(p, "GROUP", 5) == 0) {
-            char group_name[256] = "";
-
-            if (*p == '{') {
-                p++;
-                if (*p == ',') p++;
-                p = skip_whitespace(p);
-                strncpy(group_name, p, 255);
-            } else {
-                p += 5;  /* Skip "GROUP" */
-                if (*p == ',') p++;
-                p = skip_whitespace(p);
-                strncpy(group_name, p, 255);
-            }
-
-            /* Trim whitespace */
-            char *end = group_name + strlen(group_name) - 1;
-            while (end >= group_name && (isspace(*end) || *end == ',')) *end-- = '\0';
-
-            in_group = 1;
-            mensur *group_men = parse_mensur_section(fp, group_name, &in_group);
-
-            if (group_count < MAX_GROUPS && group_men) {
-                strncpy(groups[group_count].name, group_name, 255);
-                groups[group_count].men = group_men;
-                group_count++;
-            }
-            continue;
-        }
+    readbytes = fstatus.st_size;
+    readbuffer = malloc(readbytes + 1);
+    if (readbuffer == NULL) {
+        fprintf(stderr, "Cannot allocate memory\n");
+        return NULL;
     }
 
-    fclose(fp);
-
-    /* Resolve side branches and insertions */
-    if (main_men) {
-        mensur *m = main_men;
-        while (m) {
-            if (m->sidename[0] != '\0') {
-                if (getenv("DEBUG_XMENSUR")) {
-                    fprintf(stderr, "XMENSUR: Resolving side branch '%s' (s_type=%d, s_ratio=%.3f)\n",
-                            m->sidename, m->s_type, m->s_ratio);
-                }
-                /* Find the group */
-                for (int i = 0; i < group_count; i++) {
-                    if (strcmp(groups[i].name, m->sidename) == 0) {
-                        if (getenv("DEBUG_XMENSUR")) {
-                            fprintf(stderr, "XMENSUR:   Found group '%s' at index %d\n", groups[i].name, i);
-                        }
-                        if (m->s_type == ADDON) {
-                            /* Insert group into main chain */
-                            mensur *group_last = get_last_men(groups[i].men);
-                            if (group_last && m->next) {
-                                group_last->next = m->next;
-                                m->next->prev = group_last;
-                            }
-                            m->next = groups[i].men;
-                            groups[i].men->prev = m;
-                        } else {
-                            /* Attach as side branch */
-                            m->side = groups[i].men;
-                            if (getenv("DEBUG_XMENSUR")) {
-                                fprintf(stderr, "XMENSUR:   Attached as side branch\n");
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-            m = m->next;
-        }
-
-        /* Debug: dump structure BEFORE rejoint_men */
-        if (getenv("DEBUG_MENSUR_STRUCTURE")) {
-            fprintf(stderr, "\n=== XMENSUR Structure BEFORE rejoint_men ===\n");
-            mensur *m = get_first_men(main_men);
-            int seg_num = 0;
-            while (m && seg_num < 15) {  /* Limit to first 15 for brevity */
-                fprintf(stderr, "[%d] df=%.4f db=%.4f r=%.4f", seg_num, m->df, m->db, m->r);
-                if (m->sidename[0] != '\0') {
-                    fprintf(stderr, " sidename='%s' s_type=%d side=%p", m->sidename, m->s_type, (void*)m->side);
-                }
-                fprintf(stderr, "\n");
-                m = m->next;
-                seg_num++;
-            }
-            fprintf(stderr, "=== End ===\n\n");
-        }
-
-        /* Rejoint branches based on s_ratio */
-        main_men = rejoint_men(main_men);
+    infile = fopen(path, "r");
+    if (infile == NULL) {
+        fprintf(stderr, "Cannot open file: %s\n", path);
+        free(readbuffer);
+        return NULL;
     }
 
-    mensur *result = get_first_men(main_men);
+    fread(readbuffer, 1, readbytes, infile);
+    readbuffer[readbytes] = '\0';
+    fclose(infile);
 
-    /* Debug: dump final structure */
-    if (getenv("DEBUG_MENSUR_STRUCTURE")) {
-        fprintf(stderr, "\n=== XMENSUR Final Structure ===\n");
-        mensur *m = result;
-        int seg_num = 0;
-        while (m) {
-            fprintf(stderr, "[%d] df=%.4f db=%.4f r=%.4f", seg_num, m->df, m->db, m->r);
-            if (m->sidename[0] != '\0') {
-                fprintf(stderr, " sidename='%s' s_type=%d s_ratio=%.3f side=%p",
-                        m->sidename, m->s_type, m->s_ratio, (void*)m->side);
-            }
-            fprintf(stderr, " (prev=%p, next=%p)\n", (void*)m->prev, (void*)m->next);
+    eol_to_lf(readbuffer);
 
-            /* Show side branch if present */
-            if (m->side) {
-                mensur *s = m->side;
-                int side_num = 0;
-                fprintf(stderr, "  SIDE BRANCH:\n");
-                while (s) {
-                    fprintf(stderr, "    [%d] df=%.4f db=%.4f r=%.4f (prev=%p, next=%p)\n",
-                            side_num, s->df, s->db, s->r, (void*)s->prev, (void*)s->next);
-                    s = s->next;
-                    side_num++;
-                }
-            }
-
-            m = m->next;
-            seg_num++;
-        }
-        fprintf(stderr, "=== End Structure (%d segments) ===\n\n", seg_num);
+    /* Phase 0: Validate structure */
+    if (!validate_xmensur_structure(readbuffer)) {
+        free(readbuffer);
+        return NULL;
     }
 
-    return result;
+    /* Phase 1: Parse variables */
+    read_xmen_variables(readbuffer);
+
+    /* Phase 2: Read child mensur groups */
+    read_xmen_groups(readbuffer);
+
+    /* Phase 3: Build main mensur structure */
+    men = build_xmen(readbuffer);
+
+    free(readbuffer);
+
+    if (men == NULL) {
+        return NULL;
+    }
+
+    /* Phase 4: Resolve child connections */
+    resolve_xmen_child(men);
+
+    /* Phase 5: Rejoint branches */
+    men = rejoint_men(men);
+
+    return get_first_men(men);
 }
