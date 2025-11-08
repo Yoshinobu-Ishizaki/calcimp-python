@@ -584,6 +584,51 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
             continue;
         }
 
+        /* Handle INSERT marker: INSERT, groupname or @,groupname */
+        if (strncasecmp_xmen(line, "INSERT", 6) == 0 || line[0] == '@') {
+            char *p = (line[0] == '@') ? line + 1 : line + 6;
+            if (*p == ',') p++;
+
+            /* Trim whitespace from group name */
+            while (*p && isspace((unsigned char)*p)) p++;
+            char *end = p + strlen(p) - 1;
+            while (end >= p && (isspace((unsigned char)*end) || *end == ',')) {
+                *end = '\0';
+                end--;
+            }
+
+            /* Find the group */
+            int found = -1;
+            for (int i = 0; i < group_count; i++) {
+                if (strcasecmp_xmen(groups[i].name, p) == 0) {
+                    found = i;
+                    break;
+                }
+            }
+
+            if (found == -1) {
+                fprintf(stderr, "Error: INSERT references undefined group '%s'\n", p);
+                free(line);
+                *error = 1;
+                return NULL;
+            }
+
+            /* Copy all mensur cells from the referenced group */
+            mensur *src = groups[found].men;
+            while (src) {
+                if (!head) {
+                    head = create_men(src->df, src->db, src->r, src->comment);
+                    cur = head;
+                } else {
+                    cur = append_men(cur, src->df, src->db, src->r, src->comment);
+                }
+                src = src->next;
+            }
+
+            free(line);
+            continue;
+        }
+
         /* Try to parse as df,db,r line */
         double df, db, r;
         char comment[64];
@@ -640,14 +685,107 @@ static int group_exists(const char* name) {
 }
 
 /*
+ * Skip an entire block (MAIN or GROUP) by counting depth
+ */
+static void skip_block(char** mendefs, int *idx, int is_main) {
+    int depth = 1;
+    (*idx)++;  /* Skip opening marker */
+
+    while (mendefs[*idx] != NULL && depth > 0) {
+        char *line = mendefs[*idx];
+
+        if (is_main) {
+            if (strcmp(line, "[") == 0 || strcasecmp_xmen(line, "MAIN") == 0) depth++;
+            if (strcmp(line, "]") == 0 || strcasecmp_xmen(line, "END_MAIN") == 0) depth--;
+        } else {
+            if (strcmp(line, "{") == 0 || strncasecmp_xmen(line, "GROUP", 5) == 0) depth++;
+            if (strcmp(line, "}") == 0 || strncasecmp_xmen(line, "END_GROUP", 9) == 0) depth--;
+        }
+
+        (*idx)++;
+    }
+}
+
+/*
  * Read all groups and MAIN from mensur definition lines
  * Returns NULL on error
+ * Uses two-pass approach: first pass parses all non-MAIN groups,
+ * second pass parses MAIN (which can reference the groups)
  */
 static xmen_group* read_xmen_groups(char** mendefs) {
     group_count = 0;
-    int idx = 0;
     int error = 0;
 
+    /* FIRST PASS: Parse all non-MAIN groups */
+    int idx = 0;
+    while (mendefs[idx] != NULL) {
+        char *line = mendefs[idx];
+
+        /* Skip MAIN for now - skip entire block */
+        if (strcasecmp_xmen(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
+            skip_block(mendefs, &idx, 1);
+            continue;
+        }
+
+        /* Check for GROUP or { */
+        if (strncasecmp_xmen(line, "GROUP", 5) == 0 || strncmp(line, "{", 1) == 0) {
+            if (group_count >= MAX_GROUPS) {
+                fprintf(stderr, "Error: Number of groups (%d) exceeds maximum limit (%d)\n",
+                        group_count + 1, MAX_GROUPS);
+                return NULL;
+            }
+
+            /* Extract group name */
+            char group_name[256] = "";
+            if (line[0] == '{') {
+                char *p = line + 1;
+                if (*p == ',') p++;
+                strncpy(group_name, p, 255);
+            } else {
+                char *p = line + 5;  /* Skip "GROUP" */
+                if (*p == ',') p++;
+                strncpy(group_name, p, 255);
+            }
+
+            /* Trim group name - leading whitespace */
+            char *start = group_name;
+            while (*start && isspace((unsigned char)*start)) start++;
+            if (start != group_name) {
+                memmove(group_name, start, strlen(start) + 1);
+            }
+
+            /* Trim group name - trailing whitespace */
+            char *end = group_name + strlen(group_name) - 1;
+            while (end >= group_name && (isspace((unsigned char)*end) || *end == ',')) {
+                *end = '\0';
+                end--;
+            }
+
+            /* Check for duplicate group name */
+            if (strlen(group_name) > 0 && group_exists(group_name)) {
+                fprintf(stderr, "Error: Duplicate group definition: '%s'\n", group_name);
+                return NULL;
+            }
+
+            idx++;
+            mensur *group_men = parse_group_recursive(mendefs, &idx, group_name, &error);
+            if (error) {
+                return NULL;
+            }
+            if (group_men && strlen(group_name) > 0) {
+                strncpy(groups[group_count].name, group_name, 255);
+                groups[group_count].name[255] = '\0';
+                groups[group_count].men = group_men;
+                group_count++;
+            }
+            continue;
+        }
+
+        idx++;
+    }
+
+    /* SECOND PASS: Parse MAIN (which can now reference the groups) */
+    idx = 0;
     while (mendefs[idx] != NULL) {
         char *line = mendefs[idx];
 
@@ -672,53 +810,6 @@ static xmen_group* read_xmen_groups(char** mendefs) {
             if (main_men) {
                 strcpy(groups[group_count].name, "MAIN");
                 groups[group_count].men = main_men;
-                group_count++;
-            }
-            continue;
-        }
-
-        /* Check for GROUP or { */
-        if (strncasecmp_xmen(line, "GROUP", 5) == 0 || strncmp(line, "{", 1) == 0) {
-            if (group_count >= MAX_GROUPS) {
-                fprintf(stderr, "Error: Number of groups (%d) exceeds maximum limit (%d)\n",
-                        group_count + 1, MAX_GROUPS);
-                return NULL;
-            }
-
-            /* Extract group name */
-            char group_name[256] = "";
-            if (line[0] == '{') {
-                char *p = line + 1;
-                if (*p == ',') p++;
-                strncpy(group_name, p, 255);
-            } else {
-                char *p = line + 5;  /* Skip "GROUP" */
-                if (*p == ',') p++;
-                strncpy(group_name, p, 255);
-            }
-
-            /* Trim group name */
-            char *end = group_name + strlen(group_name) - 1;
-            while (end >= group_name && (isspace((unsigned char)*end) || *end == ',')) {
-                *end = '\0';
-                end--;
-            }
-
-            /* Check for duplicate group name */
-            if (strlen(group_name) > 0 && group_exists(group_name)) {
-                fprintf(stderr, "Error: Duplicate group definition: '%s'\n", group_name);
-                return NULL;
-            }
-
-            idx++;
-            mensur *group_men = parse_group_recursive(mendefs, &idx, group_name, &error);
-            if (error) {
-                return NULL;
-            }
-            if (group_men && strlen(group_name) > 0) {
-                strncpy(groups[group_count].name, group_name, 255);
-                groups[group_count].name[255] = '\0';
-                groups[group_count].men = group_men;
                 group_count++;
             }
             continue;
