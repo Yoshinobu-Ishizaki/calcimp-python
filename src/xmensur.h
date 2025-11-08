@@ -8,8 +8,13 @@
 
 #include "zmensur.h"
 
-/* defines reserved keywords and their flags */
-enum{ MAIN = 1, END_MAIN, GROUP, END_GROUP, INSERT, SPLIT, BRANCH, MERGE };
+/* defines reserved keywords and their flags for parsing */
+/* Note: SPLIT and JOIN are already defined in zmensur.h as connection types */
+/* These are marker types for parsing only */
+enum{ XMAIN = 1, XEND_MAIN, XGROUP, XEND_GROUP, XINSERT, XSPLIT, XBRANCH, XMERGE };
+
+/* terminator */
+enum{ XOPEN_END=0, XCLOSED_END };
 
 /* Main function to read XMENSUR format file */
 mensur* read_xmensur(const char *path);
