@@ -194,6 +194,7 @@ def get_sources():
         'src/kutils.c',
         'src/zmensur.c',
         'src/xmensur.c',
+        'src/tinyexpr.c',  # TinyExpr math expression parser
         'src/xydata.c',
         'src/matutil.c',
     ]
