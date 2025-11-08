@@ -210,9 +210,21 @@ static char** split_var_defs(char** lines) {
 }
 
 /*
+ * Check if a variable name already exists
+ */
+static int variable_exists(const char* name) {
+    for (int i = 0; i < var_count; i++) {
+        if (strcmp(variables[i].name, name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
  * Step 3: Read variable definitions
  * Note: No whitespace handling needed - already trimmed by read_xmensur_text
- * Returns NULL if variable count exceeds MAX_VARS
+ * Returns NULL if variable count exceeds MAX_VARS or if duplicate variables are found
  */
 static xmen_var* read_xmen_variables(char** vardefs) {
     var_count = 0;
@@ -234,6 +246,13 @@ static xmen_var* read_xmen_variables(char** vardefs) {
         while (*value_str == ' ') value_str++;
 
         if (strlen(name) > 0) {
+            /* Check for duplicate variable name */
+            if (variable_exists(name)) {
+                fprintf(stderr, "Error: Duplicate variable definition: '%s'\n", name);
+                free(line);
+                return NULL;
+            }
+
             if (var_count >= MAX_VARS) {
                 fprintf(stderr, "Error: Number of variables (%d) exceeds maximum limit (%d)\n",
                         var_count + 1, MAX_VARS);
@@ -520,6 +539,18 @@ static mensur* parse_group_recursive(char** lines, int *idx, const char *group_n
 }
 
 /*
+ * Check if a group name already exists
+ */
+static int group_exists(const char* name) {
+    for (int i = 0; i < group_count; i++) {
+        if (strcmp(groups[i].name, name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
  * Read all groups and MAIN from mensur definition lines
  * Returns NULL on error
  */
@@ -533,6 +564,12 @@ static xmen_group* read_xmen_groups(char** mendefs) {
 
         /* Check for MAIN or [ */
         if (strcmp(line, "MAIN") == 0 || strcmp(line, "[") == 0) {
+            /* Check for duplicate MAIN definition */
+            if (group_exists("MAIN")) {
+                fprintf(stderr, "Error: Duplicate MAIN block definition\n");
+                return NULL;
+            }
+
             if (group_count >= MAX_GROUPS) {
                 fprintf(stderr, "Error: Number of groups (%d) exceeds maximum limit (%d)\n",
                         group_count + 1, MAX_GROUPS);
@@ -576,6 +613,12 @@ static xmen_group* read_xmen_groups(char** mendefs) {
             while (end >= group_name && (isspace((unsigned char)*end) || *end == ',')) {
                 *end = '\0';
                 end--;
+            }
+
+            /* Check for duplicate group name */
+            if (strlen(group_name) > 0 && group_exists(group_name)) {
+                fprintf(stderr, "Error: Duplicate group definition: '%s'\n", group_name);
+                return NULL;
             }
 
             idx++;
@@ -769,5 +812,128 @@ mensur* read_xmensur(const char* path) {
     free(mendefs);
 
     return mainmen;
+}
+
+/*
+ * Test function for error handling validation
+ * Returns 0 on success, non-zero on failure
+ */
+int test_xmensur_error_handling(void) {
+    int test_count = 0;
+    int passed = 0;
+    int failed = 0;
+    FILE *f;
+    mensur *result;
+
+    printf("Testing XMENSUR error handling\n");
+    printf("================================\n\n");
+
+    /* Test 1: Duplicate variable definition */
+    test_count++;
+    printf("Test %d: Duplicate variable definition\n", test_count);
+    f = fopen("test_dup_var.xmen", "w");
+    fprintf(f, "x = 10\ny = 20\nx = 30\nMAIN\n10,10,100\n10,0,0\nEND_MAIN\n");
+    fclose(f);
+    result = read_xmensur("test_dup_var.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 2: Duplicate group definition */
+    test_count++;
+    printf("Test %d: Duplicate group definition\n", test_count);
+    f = fopen("test_dup_group.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\n10,0,0\nEND_MAIN\n");
+    fprintf(f, "GROUP,side\n5,5,50\n5,0,0\nEND_GROUP\n");
+    fprintf(f, "GROUP,side\n5,5,50\n5,0,0\nEND_GROUP\n");
+    fclose(f);
+    result = read_xmensur("test_dup_group.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 3: Duplicate MAIN block */
+    test_count++;
+    printf("Test %d: Duplicate MAIN block\n", test_count);
+    f = fopen("test_dup_main.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\n10,0,0\nEND_MAIN\n");
+    fprintf(f, "MAIN\n10,10,100\n10,0,0\nEND_MAIN\n");
+    fclose(f);
+    result = read_xmensur("test_dup_main.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 4: Missing END_MAIN */
+    test_count++;
+    printf("Test %d: Missing END_MAIN\n", test_count);
+    f = fopen("test_missing_end.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\n");
+    fclose(f);
+    result = read_xmensur("test_missing_end.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 5: Mismatched MAIN with END_GROUP */
+    test_count++;
+    printf("Test %d: MAIN with END_GROUP (mismatched)\n", test_count);
+    f = fopen("test_mismatch.xmen", "w");
+    fprintf(f, "MAIN\n10,10,100\nEND_GROUP\n");
+    fclose(f);
+    result = read_xmensur("test_mismatch.xmen");
+    if (result == NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected NULL)\n\n");
+        failed++;
+    }
+
+    /* Test 6: Valid file (should succeed) */
+    test_count++;
+    printf("Test %d: Valid XMENSUR file\n", test_count);
+    f = fopen("test_valid.xmen", "w");
+    fprintf(f, "x = 10\ny = 20\n");
+    fprintf(f, "MAIN\n10,10,100\n10,0,0\nEND_MAIN\n");
+    fprintf(f, "GROUP,side\n5,5,50\n5,0,0\nEND_GROUP\n");
+    fclose(f);
+    result = read_xmensur("test_valid.xmen");
+    if (result != NULL) {
+        printf("  ✓ PASSED\n\n");
+        passed++;
+    } else {
+        printf("  ✗ FAILED (expected non-NULL)\n\n");
+        failed++;
+    }
+
+    /* Cleanup test files */
+    remove("test_dup_var.xmen");
+    remove("test_dup_group.xmen");
+    remove("test_dup_main.xmen");
+    remove("test_missing_end.xmen");
+    remove("test_mismatch.xmen");
+    remove("test_valid.xmen");
+
+    printf("================================\n");
+    printf("Tests completed: %d total, %d passed, %d failed\n", test_count, passed, failed);
+
+    return (failed == 0) ? 0 : 1;
 }
 

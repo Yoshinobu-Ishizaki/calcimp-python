@@ -19,4 +19,7 @@ enum{ XOPEN_END=0, XCLOSED_END };
 /* Main function to read XMENSUR format file */
 mensur* read_xmensur(const char *path);
 
+/* Test function for error handling validation */
+int test_xmensur_error_handling(void);
+
 #endif /* _XMENSUR_H_ */
