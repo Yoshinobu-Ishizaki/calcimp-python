@@ -190,75 +190,75 @@ The test will:
 - Compare results with reference implementation
 - Generate output file: `test/test_pycalcimp.imp`
 
-## Mensur File Format
+## Mensur File Formats
 
-Mensur files (`.men`) describe tube geometry with CSV format:
+calcimp supports two file formats for describing tube geometry:
 
-### Basic Format
+### 1. XMENSUR Format (.xmen)
+
+Recommended file format for calcimp-python.
+
+Python-style format with `#` comments, brackets, and expressions:
+
 ```
-# Comment line: tube description
-df,db,length    # Front diameter, back diameter, length (all in mm)
-10,10,1000      # Cylindrical tube: 10mm diameter, 1000mm length
-10,0,0          # Terminator: open end
-```
+# Trumpet with valve
+bore_dia = 11.5  # Variable definition
 
-### Extended Format (zmensur)
+[  # Main bore
+    10, bore_dia, 100,  # Can use expressions
+    >, VALVE1, 1,       # Valve branch
+    bore_dia, bore_dia, 150,
+    <, VALVE1, 1,       # Valve merge
+    OPEN_END
+]
 
-The extended zmensur format supports advanced features for modeling complex wind instruments:
-
-#### Features
-- **Variable definitions**: Define reusable values
-- **Tone holes**: Model finger holes and water keys
-- **Valve branches**: Specify valve routing and detours
-- **Comments**: Add comments anywhere using `%`
-
-#### Special Line Prefixes
-- `%` - Comment (ignored until end of line)
-- `$name` - Define a sub-mensur section with the given name
-- `+name,ratio` - Insert a sub-mensur as an addition
-  - `ratio=0`: Not actually inserted
-  - `0 < ratio < 1`: Inserted as a branch (creates multiple bore path)
-- `-name,ratio` - Insert a sub-mensur as a tone hole
-  - `ratio=1`: Fully open hole
-  - `ratio=0`: Fully closed hole
-  - `0 < ratio < 1`: Partially open hole
-- `>name,ratio` - Start of a valve detour section
-- `<name,ratio` - End point where valve detour reconnects
-  - `0 < ratio < 1`: Half-valve effect
-
-#### Example
-```
-zmensur sample with valve % First line is file comment
-% Comments can appear anywhere
-bore_dia=15,
-valve_len=100,
-
-% Main bore
-15,15,20,main section
->valve1,1           % Valve detour starts here
-15,15,30,after valve
--hole1,0.8          % Tone hole (80% open)
-15,15,40,
-<valve1,1           % Valve detour reconnects here
-15,0,0,             % Open end terminator
-
-% Define valve detour path
-$valve1
-15,15,valve_len,valve tubing
-15,15,20,
-15,0,0,
-
-% Define tone hole geometry
-$hole1
-5,5,10,hole chimney
-5,0,0,              % Effective diameter: 0.8 × 5 = 4mm
+{, VALVE1  # Valve slide definition
+    bore_dia, bore_dia, 300,
+    OPEN_END
+}
 ```
 
-#### Termination
-- `df,0,0` - Open end (flared or non-flared based on df)
-- `0,0,0` - Closed end
+**Key differences:**
+- Uses `#` for comments (like Python)
+- Supports Python arithmetic expressions and variables
+- Uses brackets `[]` for main grouping and `{}` for other grouping
+- Keywords: `OPEN_END`, `CLOSED_END`, `MAIN`, `END_MAIN`,`GROUP`, `END_GROUP`, `BRANCH`, `MERGE`,`SPLIT`,`INSERT`.
+- Aliases: `>` = BRANCH, `<` = MERGE, `|` = SPLIT, `@`=INSERT
 
-For more details, see `doc/zmensur.md` (Japanese)
+**[See doc/xmensur.md](doc/xmensur.md)** for complete XMENSUR format specification.
+
+### 2. ZMENSUR Format (.men)
+
+This is old format for mensur. Still recognize for backward compatibility.
+
+CSV-based format with `%` comments:
+
+```
+# Basic tube
+10,10,1000,     % Cylindrical tube: 10mm diameter, 1000mm length
+10,0,0,         % Open end terminator
+```
+
+**Extended features:**
+- Variable definitions and reusable sub-mensur sections
+- Tone holes with adjustable openness (`-name,ratio`)
+- Valve branches and detour routing (`>name,ratio` / `<name,ratio`)
+
+**[See doc/zmensur.md](doc/zmensur.md)** for complete ZMENSUR format specification.
+
+### Usage
+
+Both formats work seamlessly - just use the appropriate file extension:
+
+```python
+import calcimp
+
+# ZMENSUR format
+freq, real, imag, mag = calcimp.calcimp("instrument.men")
+
+# XMENSUR format (automatically converted)
+freq, real, imag, mag = calcimp.calcimp("instrument.xmen")
+```
 
 ## トラブルシューティング (Troubleshooting)
 
@@ -313,7 +313,21 @@ git push origin v0.1.0
 
 Original code by Yoshinobu Ishizaki (1999)
 
+## Acknowledgements
+
+This project incorporates the following third-party libraries:
+
+- **Cephes Mathematical Library** by Stephen L. Moshier
+  - Provides special mathematical functions (Bessel, Struve, Airy functions)
+  - Copyright (C) 1995 Stephen L. Moshier
+  - http://www.netlib.org/cephes/
+
+- **TinyExpr** by Lewis Van Winkle
+  - Lightweight expression parser for mathematical expressions in XMENSUR files
+  - Copyright (c) 2015-2020 Lewis Van Winkle
+  - https://github.com/codeplea/tinyexpr
+  - Licensed under the zlib license
+
 ## 参考文献 (References)
 
 - Fletcher & Rossing: "The Physics of Musical Instruments"
-- Cephes Mathematical Library: http://www.netlib.org/cephes/

@@ -1,0 +1,7 @@
+# Test XMENSUR file - simple cylindrical tube
+# This is equivalent to test.men but in XMENSUR format
+
+[
+    10,10,1000,  # Cylindrical tube: 10mm diameter, 1000mm length
+    10,0,0,      # Open end
+]
