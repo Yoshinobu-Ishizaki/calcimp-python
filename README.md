@@ -238,7 +238,7 @@ bore_dia = 11.5  # Variable definition
 - Supports Python arithmetic expressions and variables
 - Uses brackets `[]` and `{}` for grouping
 - Keywords: `OPEN_END`, `CLOSED_END`, `MAIN`, `GROUP`
-- Aliases: `<` = BRANCH, `>` = MERGE, `|` = SPLIT
+- Aliases: `>` = BRANCH, `<` = MERGE, `|` = SPLIT
 
 **[See doc/xmensur.md](doc/xmensur.md)** for complete XMENSUR format specification.
 
