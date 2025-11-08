@@ -36,6 +36,13 @@ class CustomBuildExt(build_ext):
         # Build cephes-lib if needed
         self.build_cephes_lib()
 
+        # Update extension configuration with cephes library paths
+        cephes_config = self.get_cephes_config()
+        for ext in self.extensions:
+            if ext.name == 'calcimp':
+                ext.include_dirs.extend(cephes_config['include_dirs'])
+                ext.extra_objects.extend(cephes_config['extra_objects'])
+
         # Continue with normal extension build
         build_ext.run(self)
 
@@ -139,45 +146,45 @@ class CustomBuildExt(build_ext):
                 "  macOS: brew install autoconf automake libtool"
             ) from e
 
-def get_cephes_config():
-    """Get Cephes library path and configuration."""
-    cephes_path = os.environ.get('CEPHES_PATH')
+    def get_cephes_config(self):
+        """Get Cephes library path and configuration."""
+        cephes_path = os.environ.get('CEPHES_PATH')
 
-    if cephes_path is None:
-        # First, try ../cephes-lib (for local development)
-        parent_cephes = os.path.abspath('../cephes-lib')
-        if os.path.exists(parent_cephes):
-            cephes_path = parent_cephes
-        else:
-            # Try ../cephes_lib (underscore)
-            parent_cephes_underscore = os.path.abspath('../cephes_lib')
-            if os.path.exists(parent_cephes_underscore):
-                cephes_path = parent_cephes_underscore
+        if cephes_path is None:
+            # First, try ../cephes-lib (for local development)
+            parent_cephes = os.path.abspath('../cephes-lib')
+            if os.path.exists(parent_cephes):
+                cephes_path = parent_cephes
             else:
-                # Use local directory for pip install from git
-                cephes_path = os.path.abspath('.cephes-lib')
-    else:
+                # Try ../cephes_lib (underscore)
+                parent_cephes_underscore = os.path.abspath('../cephes_lib')
+                if os.path.exists(parent_cephes_underscore):
+                    cephes_path = parent_cephes_underscore
+                else:
+                    # Use local directory for pip install from git
+                    cephes_path = os.path.abspath('.cephes-lib')
+        else:
+            cephes_path = os.path.abspath(cephes_path)
+
+        cephes_lib = os.path.join(cephes_path, 'libmd.a')
+
+        # Convert to absolute path for reliable linking
         cephes_path = os.path.abspath(cephes_path)
+        cephes_lib = os.path.abspath(cephes_lib)
 
-    cephes_lib = os.path.join(cephes_path, 'libmd.a')
+        if not os.path.exists(cephes_lib):
+            raise RuntimeError(
+                f"Cephes library not found at {cephes_lib}\n"
+                f"This should have been built automatically. Please check build logs."
+            )
 
-    # Convert to absolute path for reliable linking
-    cephes_path = os.path.abspath(cephes_path)
-    cephes_lib = os.path.abspath(cephes_lib)
+        print(f"Using Cephes library: {cephes_lib}")
 
-    if not os.path.exists(cephes_lib):
-        raise RuntimeError(
-            f"Cephes library not found at {cephes_lib}\n"
-            f"This should have been built automatically. Please check build logs."
-        )
-
-    print(f"Using Cephes library: {cephes_lib}")
-
-    # Use extra_objects for static library linking (standard method)
-    return {
-        'include_dirs': [cephes_path],
-        'extra_objects': [cephes_lib]
-    }
+        # Use extra_objects for static library linking (standard method)
+        return {
+            'include_dirs': [cephes_path],
+            'extra_objects': [cephes_lib]
+        }
 
 def get_sources():
     """Get list of source files (excluding Cephes sources - linked via libmd.a)."""
@@ -194,24 +201,21 @@ def get_sources():
 # Get compiler and linker flags for glib-2.0 and gsl
 ext_kwargs = pkg_config('glib-2.0', 'gsl')
 
-# Get Cephes library configuration
-cephes_config = get_cephes_config()
-
 # Platform-specific linker flags
 extra_link_args = ext_kwargs.get('extra_link_args', [])
 if platform.system() == 'Windows':
     # Allow multiple definitions to resolve conflicts between cephes and MSVCRT Bessel functions
     extra_link_args.append('-Wl,--allow-multiple-definition')
 
+# Create extension without cephes configuration (will be added during build)
 module = Extension('calcimp',
                   sources=get_sources(),
                   include_dirs=[np.get_include(), 'src'] +
-                               ext_kwargs.get('include_dirs', []) +
-                               cephes_config['include_dirs'],
+                               ext_kwargs.get('include_dirs', []),
                   libraries=ext_kwargs.get('libraries', []) + ['m'],  # Add libm for math functions
                   library_dirs=ext_kwargs.get('library_dirs', []),
                   extra_compile_args=['-O3'] + ext_kwargs.get('extra_compile_args', []),
-                  extra_objects=cephes_config['extra_objects'],  # Static library (.a file)
+                  extra_objects=[],  # Will be populated during build with cephes library
                   extra_link_args=extra_link_args,
                   define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')])
 
