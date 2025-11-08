@@ -14,7 +14,7 @@ Air column's shape ( so called MENSUR ) should be given by XMEN format.
 
 ## XMEN FORMAT
 
-XMEN format is defined here to notify air column's shape (MENSUR).
+XMEN format is defined here to express air column's shape (MENSUR).
 
 It is a CSV text file with '.xmen' as its extension.
 
@@ -22,7 +22,7 @@ Any spaces and tabs and blank lines are ignored.
 
 Comment is inserted at any position starting with  '#' (same as Python).
 
-Unit is in mm. All calculation is done under SI unit system.
+Unit is in mm. But all calculation is done under SI unit system.
 
 **Keywords are case-insensitive.** You can use `MAIN`, `Main`, `main`, or any combination of cases.
 
@@ -30,7 +30,7 @@ Unit is in mm. All calculation is done under SI unit system.
 
 - Variable definition such as `x = 1.2`. Simple arithmetic(`+-*/()`) code can be used. ex. `y = (x-3.4)*2`. Defined variables can be used in Marker or Cell line. Duplicated definition of same variable name is not allowed (case-insensitive).
 - Marker lines such as `GROUP/END_GROUP,MAIN/END_MAIN,INSERT(@),SPLIT(|),BRANCH(>),MERGE(<)` (case-insensitive)
-- Normal mensur Cell definition `dia_forward, dia_backward, rel_len`
+- Normal mensur Cell definition `dia_forward, dia_backward, rel_len, comment(optional)`
 
 ### Basics
 
@@ -41,7 +41,7 @@ Df denotes Diameter Forward, db: Diameter Backward, R: relative length.
 It can be expressed by simple line.
 
 ```
-df,db,len
+df,db,r
 ```
 It is a straight tube if df == db.
 
@@ -205,9 +205,9 @@ If `ratio` is between 0 and 1, two paths are blended.
 # branch test mensur
 [
 10,10,300,
-<,SL1,0.5
+>,SL1,0.5
 10,10,200,
->,SL1,0.5,
+<,SL1,0.5,
 10,10,500,
 OPEN_END
 ]

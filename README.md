@@ -194,24 +194,9 @@ The test will:
 
 calcimp supports two file formats for describing tube geometry:
 
-### 1. ZMENSUR Format (.men)
+### 1. XMENSUR Format (.xmen)
 
-CSV-based format with `%` comments:
-
-```
-# Basic tube
-10,10,1000,     % Cylindrical tube: 10mm diameter, 1000mm length
-10,0,0,         % Open end terminator
-```
-
-**Extended features:**
-- Variable definitions and reusable sub-mensur sections
-- Tone holes with adjustable openness (`-name,ratio`)
-- Valve branches and detour routing (`>name,ratio` / `<name,ratio`)
-
-**[See doc/zmensur.md](doc/zmensur.md)** for complete ZMENSUR format specification.
-
-### 2. XMENSUR Format (.xmen)
+Recommended file format for calcimp-python.
 
 Python-style format with `#` comments, brackets, and expressions:
 
@@ -236,11 +221,30 @@ bore_dia = 11.5  # Variable definition
 **Key differences:**
 - Uses `#` for comments (like Python)
 - Supports Python arithmetic expressions and variables
-- Uses brackets `[]` and `{}` for grouping
-- Keywords: `OPEN_END`, `CLOSED_END`, `MAIN`, `GROUP`
-- Aliases: `>` = BRANCH, `<` = MERGE, `|` = SPLIT
+- Uses brackets `[]` for main grouping and `{}` for other grouping
+- Keywords: `OPEN_END`, `CLOSED_END`, `MAIN`, `END_MAIN`,`GROUP`, `END_GROUP`, `BRANCH`, `MERGE`,`SPLIT`,`INSERT`.
+- Aliases: `>` = BRANCH, `<` = MERGE, `|` = SPLIT, `@`=INSERT
 
 **[See doc/xmensur.md](doc/xmensur.md)** for complete XMENSUR format specification.
+
+### 2. ZMENSUR Format (.men)
+
+This is old format for mensur. Still recognize for backward compatibility.
+
+CSV-based format with `%` comments:
+
+```
+# Basic tube
+10,10,1000,     % Cylindrical tube: 10mm diameter, 1000mm length
+10,0,0,         % Open end terminator
+```
+
+**Extended features:**
+- Variable definitions and reusable sub-mensur sections
+- Tone holes with adjustable openness (`-name,ratio`)
+- Valve branches and detour routing (`>name,ratio` / `<name,ratio`)
+
+**[See doc/zmensur.md](doc/zmensur.md)** for complete ZMENSUR format specification.
 
 ### Usage
 
