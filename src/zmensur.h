@@ -1,6 +1,6 @@
 /*
  * $Id: zmensur.h 6 2013-09-13 13:16:15Z yoshinobu $
- * ��ĥ��󥺡���򰷤�����δؿ���
+ * 拡張メンズールを扱うための関数群
  */
 
 #ifndef _ZMENSUR_
@@ -56,17 +56,17 @@ struct varlist {
 enum { TONEHOLE = 1, ADDON,SPLIT,JOIN };
 
 /* 
- * �����໤�η���
- * Fletcher & Rossing �ˤ�����ܸ��ǡֳڴ��ʪ���ءפ�191p��
- * â�������ʽ�Ⱦ�¤�Ȥä����Ǥ���Τ��Ф����������ľ�¤�Ȥ��Τ�
- * ����˷����ͤ��碌�Ƥ��롣
+ * 管壁摩擦の係数
+ * Fletcher & Rossing による日本語版「楽器の物理学」の191p。
+ * 但し、教科書が半径を使った式であるのに対し、こちらは直径を使うので
+ * それに係数値を合わせてある。
  */
 #define VRATIO 3.3e-3 /* Fletcher & Rossing */
-/* #define VRATIO 2.3e-3  ARSIS�˹�碌��??? */
+/* #define VRATIO 2.3e-3  ARSISに合わせる??? */
 #define ARATIO 6.0e-5
 
-#define GMM 1.4 /* ��Ǯ�� */
-#define Pr 0.72 /* Prandtl�� */
+#define GMM 1.4 /* 比熱比 */
+#define Pr 0.72 /* Prandtl数 */
 
 /* ------------------------------ prototype ------------------------------ */
 /* zmensur.c */
