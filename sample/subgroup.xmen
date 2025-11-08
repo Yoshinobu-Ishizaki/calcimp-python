@@ -1,0 +1,22 @@
+# sub group mensur2
+
+# defining sub before main
+
+GROUP, SUB1
+10,10,500,
+END_GROUP
+
+[
+10,10,500,
+INSERT, SUB1
+{,SUB2,# inline sub group using short symbol
+    12,12,20,
+    13,13,20,
+}
+@,SUB3 # calling group defined at last
+10,0,0,
+]
+
+{,SUB3
+10,10,100,
+}

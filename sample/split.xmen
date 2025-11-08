@@ -1,0 +1,12 @@
+# sample split mensur
+[
+    10,10,150,
+    |,TH1,1,
+    10,10,850,
+    OPEN_END
+]
+
+{,TH1
+8,8,5,
+OPEN_END
+}
