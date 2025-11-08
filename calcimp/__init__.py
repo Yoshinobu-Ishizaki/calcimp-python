@@ -30,9 +30,13 @@ NONE = _calcimp_c.NONE
 PIPE = _calcimp_c.PIPE
 BUFFLE = _calcimp_c.BUFFLE
 
+# Re-export print_men
+print_men = _calcimp_c.print_men
+
 # Define public API
 __all__ = [
     'calcimp',
+    'print_men',
     'NONE',
     'PIPE',
     'BUFFLE',

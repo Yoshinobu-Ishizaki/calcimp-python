@@ -137,6 +137,64 @@ static PyObject* calculate_impedance(const char* filename, double max_freq, doub
     return result_tuple;
 }
 
+static PyObject* py_print_men(PyObject* self, PyObject* args) {
+    const char* filename;
+
+    if (!PyArg_ParseTuple(args, "s", &filename)) {
+        return NULL;
+    }
+
+    /* Read mensur file - detect format by extension */
+    mensur *mensur_data;
+    const char *ext = strrchr(filename, '.');
+    if (ext != NULL && strcmp(ext, ".xmen") == 0) {
+        /* XMENSUR format */
+        mensur_data = read_xmensur(filename);
+        if (mensur_data == NULL) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to read XMENSUR file");
+            return NULL;
+        }
+    } else {
+        /* ZMENSUR format */
+        mensur_data = read_mensur(filename);
+        if (mensur_data == NULL) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to read ZMENSUR file");
+            return NULL;
+        }
+    }
+
+    /* Build list of tuples (df, db, r, comment) */
+    PyObject *result_list = PyList_New(0);
+    if (result_list == NULL) {
+        return NULL;
+    }
+
+    mensur *m = get_first_men(mensur_data);
+    while (m != NULL) {
+        /* Create tuple (df, db, r, comment) - convert from meters to mm */
+        PyObject *tuple = Py_BuildValue("(ddds)",
+                                        m->df * 1000.0,  /* df in mm */
+                                        m->db * 1000.0,  /* db in mm */
+                                        m->r * 1000.0,   /* r in mm */
+                                        m->comment);     /* comment */
+        if (tuple == NULL) {
+            Py_DECREF(result_list);
+            return NULL;
+        }
+
+        if (PyList_Append(result_list, tuple) < 0) {
+            Py_DECREF(tuple);
+            Py_DECREF(result_list);
+            return NULL;
+        }
+        Py_DECREF(tuple);
+
+        m = m->next;
+    }
+
+    return result_list;
+}
+
 static PyObject* py_calcimp(PyObject* self, PyObject* args, PyObject* kwargs) {
     const char* filename;
     double max_freq = 2000.0;
@@ -177,6 +235,12 @@ static PyMethodDef CalcimpMethods[] = {
      "    sec_var_calc (bool, optional): Enable section variation calculation (default: False)\n\n"
      "Returns:\n"
      "    tuple: (frequencies, real_part, imaginary_part, magnitude_db)"},
+    {"print_men", py_print_men, METH_VARARGS,
+     "Read and return mensur structure.\n\n"
+     "Parameters:\n"
+     "    filename (str): Path to the mensur file (.men or .xmen)\n\n"
+     "Returns:\n"
+     "    list: List of tuples (df, db, r, comment) where df, db, r are in mm"},
     {NULL, NULL, 0, NULL}
 };
 

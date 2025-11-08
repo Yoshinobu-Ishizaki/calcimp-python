@@ -263,10 +263,26 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
         }
 
         /* Check for end markers */
-        if (strcmp(p, "]") == 0 || strcmp(p, "END_MAIN") == 0 ||
-            strcmp(p, "}") == 0 || strcmp(p, "END_GROUP") == 0) {
+        if (strcmp(p, "]") == 0 || strcmp(p, "END_MAIN") == 0) {
             *in_group = 0;
             break;
+        }
+
+        /* Ignore GROUP/END_GROUP markers when nested inside MAIN */
+        /* These are just for organization, not actual sub-mensurs */
+        if (strcmp(p, "}") == 0 || strcmp(p, "END_GROUP") == 0 ||
+            *p == '{' || strncmp(p, "GROUP", 5) == 0) {
+            /* For top-level groups (V1LOOP, etc.), END_GROUP should exit */
+            /* For nested groups inside MAIN, just skip the marker */
+            if (strcmp(group_name, "MAIN") != 0) {
+                /* This is a top-level group like V1LOOP, so END_GROUP exits */
+                if (strcmp(p, "}") == 0 || strcmp(p, "END_GROUP") == 0) {
+                    *in_group = 0;
+                    break;
+                }
+            }
+            /* Skip GROUP/END_GROUP markers */
+            continue;
         }
 
         /* Check for variable assignment */
@@ -274,6 +290,42 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
             parse_variable(p);
             continue;
         }
+
+        /* Check for nested GROUP - TEMPORARILY DISABLED FOR TESTING
+        if (*p == '{' || strncmp(p, "GROUP", 5) == 0) {
+            char nested_group_name[256] = "";
+
+            if (*p == '{') {
+                p++;
+                if (*p == ',') p++;
+                p = skip_whitespace(p);
+                strncpy(nested_group_name, p, 255);
+            } else {
+                p += 5;
+                if (*p == ',') p++;
+                p = skip_whitespace(p);
+                strncpy(nested_group_name, p, 255);
+            }
+
+            char *end = nested_group_name + strlen(nested_group_name) - 1;
+            while (end >= nested_group_name && (isspace(*end) || *end == ',')) *end-- = '\0';
+
+            int nested_in_group = 1;
+            mensur *nested_men = parse_mensur_section(fp, nested_group_name, &nested_in_group);
+
+            if (nested_men) {
+                if (!head) {
+                    head = nested_men;
+                    cur = get_last_men(nested_men);
+                } else {
+                    cur->next = nested_men;
+                    nested_men->prev = cur;
+                    cur = get_last_men(nested_men);
+                }
+            }
+            continue;
+        }
+        */
 
         /* Check for special keywords */
         if (strcmp(p, "OPEN_END") == 0) {
@@ -307,12 +359,22 @@ static mensur* parse_mensur_section(FILE *fp, const char *group_name, int *in_gr
             strncmp(p, "SPLIT", 5) == 0) {
 
             char directive = *p;
-            if (strncmp(p, "BRANCH", 6) == 0) directive = '>';  /* BRANCH -> SPLIT */
-            else if (strncmp(p, "MERGE", 5) == 0) directive = '<';  /* MERGE -> JOIN */
-            else if (strncmp(p, "SPLIT", 5) == 0) directive = '|';
+            if (strncmp(p, "BRANCH", 6) == 0) {
+                directive = '>';  /* BRANCH -> SPLIT */
+                p += 6;  /* Skip "BRANCH" */
+            } else if (strncmp(p, "MERGE", 5) == 0) {
+                directive = '<';  /* MERGE -> JOIN */
+                p += 5;  /* Skip "MERGE" */
+            } else if (strncmp(p, "SPLIT", 5) == 0) {
+                directive = '|';
+                p += 5;  /* Skip "SPLIT" */
+            } else {
+                /* Single character directive */
+                p++;
+            }
 
-            /* Skip directive character and comma */
-            p++;
+            /* Skip comma if present */
+            p = skip_whitespace(p);
             if (*p == ',') p++;
             p = skip_whitespace(p);
 
@@ -488,9 +550,16 @@ mensur* read_xmensur(const char *path) {
         mensur *m = main_men;
         while (m) {
             if (m->sidename[0] != '\0') {
+                if (getenv("DEBUG_XMENSUR")) {
+                    fprintf(stderr, "XMENSUR: Resolving side branch '%s' (s_type=%d, s_ratio=%.3f)\n",
+                            m->sidename, m->s_type, m->s_ratio);
+                }
                 /* Find the group */
                 for (int i = 0; i < group_count; i++) {
                     if (strcmp(groups[i].name, m->sidename) == 0) {
+                        if (getenv("DEBUG_XMENSUR")) {
+                            fprintf(stderr, "XMENSUR:   Found group '%s' at index %d\n", groups[i].name, i);
+                        }
                         if (m->s_type == ADDON) {
                             /* Insert group into main chain */
                             mensur *group_last = get_last_men(groups[i].men);
@@ -503,6 +572,9 @@ mensur* read_xmensur(const char *path) {
                         } else {
                             /* Attach as side branch */
                             m->side = groups[i].men;
+                            if (getenv("DEBUG_XMENSUR")) {
+                                fprintf(stderr, "XMENSUR:   Attached as side branch\n");
+                            }
                         }
                         break;
                     }
@@ -511,9 +583,60 @@ mensur* read_xmensur(const char *path) {
             m = m->next;
         }
 
+        /* Debug: dump structure BEFORE rejoint_men */
+        if (getenv("DEBUG_MENSUR_STRUCTURE")) {
+            fprintf(stderr, "\n=== XMENSUR Structure BEFORE rejoint_men ===\n");
+            mensur *m = get_first_men(main_men);
+            int seg_num = 0;
+            while (m && seg_num < 15) {  /* Limit to first 15 for brevity */
+                fprintf(stderr, "[%d] df=%.4f db=%.4f r=%.4f", seg_num, m->df, m->db, m->r);
+                if (m->sidename[0] != '\0') {
+                    fprintf(stderr, " sidename='%s' s_type=%d side=%p", m->sidename, m->s_type, (void*)m->side);
+                }
+                fprintf(stderr, "\n");
+                m = m->next;
+                seg_num++;
+            }
+            fprintf(stderr, "=== End ===\n\n");
+        }
+
         /* Rejoint branches based on s_ratio */
         main_men = rejoint_men(main_men);
     }
 
-    return get_first_men(main_men);
+    mensur *result = get_first_men(main_men);
+
+    /* Debug: dump final structure */
+    if (getenv("DEBUG_MENSUR_STRUCTURE")) {
+        fprintf(stderr, "\n=== XMENSUR Final Structure ===\n");
+        mensur *m = result;
+        int seg_num = 0;
+        while (m) {
+            fprintf(stderr, "[%d] df=%.4f db=%.4f r=%.4f", seg_num, m->df, m->db, m->r);
+            if (m->sidename[0] != '\0') {
+                fprintf(stderr, " sidename='%s' s_type=%d s_ratio=%.3f side=%p",
+                        m->sidename, m->s_type, m->s_ratio, (void*)m->side);
+            }
+            fprintf(stderr, " (prev=%p, next=%p)\n", (void*)m->prev, (void*)m->next);
+
+            /* Show side branch if present */
+            if (m->side) {
+                mensur *s = m->side;
+                int side_num = 0;
+                fprintf(stderr, "  SIDE BRANCH:\n");
+                while (s) {
+                    fprintf(stderr, "    [%d] df=%.4f db=%.4f r=%.4f (prev=%p, next=%p)\n",
+                            side_num, s->df, s->db, s->r, (void*)s->prev, (void*)s->next);
+                    s = s->next;
+                    side_num++;
+                }
+            }
+
+            m = m->next;
+            seg_num++;
+        }
+        fprintf(stderr, "=== End Structure (%d segments) ===\n\n", seg_num);
+    }
+
+    return result;
 }
