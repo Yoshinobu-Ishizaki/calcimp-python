@@ -193,6 +193,7 @@ def get_sources():
         'src/acoustic_constants.c',
         'src/kutils.c',
         'src/zmensur.c',
+        'src/xmensur.c',
         'src/xydata.c',
         'src/matutil.c',
     ]

@@ -15,7 +15,7 @@ def calcimp(filename, max_freq=2000.0, step_freq=2.5, num_freq=0, temperature=24
     """Calculate input impedance of a tube.
 
     This function supports both ZMENSUR (.men) and XMENSUR (.xmen) file formats.
-    XMENSUR files are automatically converted to ZMENSUR format before processing.
+    The C extension automatically detects the format based on file extension.
 
     Parameters:
         filename (str): Path to the mensur file (.men or .xmen)
@@ -41,49 +41,11 @@ def calcimp(filename, max_freq=2000.0, step_freq=2.5, num_freq=0, temperature=24
     if rad_calc is None:
         rad_calc = _calcimp_c.PIPE
 
-    # Check file extension
-    _, ext = os.path.splitext(filename)
-    ext = ext.lower()
-
-    # If it's an XMENSUR file, convert it first
-    if ext == '.xmen':
-        # Import xmensur module
-        try:
-            from . import xmensur
-        except ImportError:
-            raise ImportError(
-                "XMENSUR support requires the xmensur module. "
-                "Please ensure xmensur.py is properly installed."
-            )
-
-        # Create a temporary file for the converted zmensur
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.men', delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            # Convert XMENSUR to ZMENSUR
-            xmensur.xmensur_to_zmensur_file(filename, tmp_path)
-
-            # Calculate using the converted file
-            result = _calcimp_c.calcimp(
-                tmp_path, max_freq, step_freq, num_freq, temperature,
-                rad_calc, dump_calc, sec_var_calc
-            )
-
-            return result
-
-        finally:
-            # Clean up temporary file
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-
-    else:
-        # It's a regular ZMENSUR file (.men) or unknown extension
-        # Pass directly to C extension
-        return _calcimp_c.calcimp(
-            filename, max_freq, step_freq, num_freq, temperature,
-            rad_calc, dump_calc, sec_var_calc
-        )
+    # Pass directly to C extension - it handles both .men and .xmen formats
+    return _calcimp_c.calcimp(
+        filename, max_freq, step_freq, num_freq, temperature,
+        rad_calc, dump_calc, sec_var_calc
+    )
 
 
 # Re-export constants from C extension

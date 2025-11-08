@@ -19,6 +19,7 @@
 #include <gsl/gsl_complex_math.h>
 #include "kutils.h"
 #include "zmensur.h"
+#include "xmensur.h"
 #include "calcimp.h"
 #include "acoustic_constants.h"
 
@@ -43,8 +44,16 @@ static PyObject* calculate_impedance(const char* filename, double max_freq, doub
     ac.dump_calc = dump_calc;
     ac.sec_var_calc = sec_var_calc;
 
-    /* Read mensur file */
-    mensur = read_mensur(filename);
+    /* Read mensur file - detect format by extension */
+    const char *ext = strrchr(filename, '.');
+    if (ext != NULL && strcmp(ext, ".xmen") == 0) {
+        /* XMENSUR format */
+        mensur = read_xmensur(filename);
+    } else {
+        /* ZMENSUR format (default) */
+        mensur = read_mensur(filename);
+    }
+
     if (mensur == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to read mensur file");
         return NULL;
